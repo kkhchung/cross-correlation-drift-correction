@@ -18,7 +18,6 @@ from scipy import ndimage, interpolate
 from PYME.IO.image import ImageStack
 
 from PYME.recipes import processing
-import Kenny
 
 import logging
 logger=logging.getLogger(__name__)
