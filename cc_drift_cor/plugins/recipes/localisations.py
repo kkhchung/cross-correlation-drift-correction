@@ -208,10 +208,23 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         dx = np.interp(t_out, t_shift, shifts[:, 0])
         dy = np.interp(t_out, t_shift, shifts[:, 1])
 
-        out.addColumn('dx', dx)
-        out.addColumn('dy', dy)
-        out.setMapping('x', 'x + dx')
-        out.setMapping('y', 'y + dy')
+        if 'dx' in out.keys():
+            # getting around oddity with mappingFilter
+            # addColumn adds a new column but also keeps the old column
+            # __getitem__ returns the new column
+            # but mappings usues the old column
+            # Wrap with another level of mappingFilter so the new column becomes the 'old column'
+            out.addColumn('dx', dx)
+            out.addColumn('dy', dy)
+            out = tabular.mappingFilter(out)
+#            out.mdh = namespace[self.input_localizations].mdh
+            out.setMapping('x', 'x + dx')
+            out.setMapping('y', 'y + dy')
+        else:
+            out.addColumn('dx', dx)
+            out.addColumn('dy', dy)
+            out.setMapping('x', 'x + dx')
+            out.setMapping('y', 'y + dy')
 
         # propagate metadata, if present
         try:
@@ -250,10 +263,23 @@ class ApplyDrift(ModuleBase):
         dx = namespace[self.input_drift_interpolator][0](t_out)
         dy = namespace[self.input_drift_interpolator][1](t_out)
         
-        out.addColumn('dx', dx)
-        out.addColumn('dy', dy)
-        out.setMapping('x', 'x + dx')
-        out.setMapping('y', 'y + dy')
+        if 'dx' in out.keys():
+            # getting around oddity with mappingFilter
+            # addColumn adds a new column but also keeps the old column
+            # __getitem__ returns the new column
+            # but mappings usues the old column
+            # Wrap with another level of mappingFilter so the new column becomes the 'old column'
+            out.addColumn('dx', dx)
+            out.addColumn('dy', dy)
+            out = tabular.mappingFilter(out)
+            out.mdh = namespace[self.input_localizations].mdh
+            out.setMapping('x', 'x + dx')
+            out.setMapping('y', 'y + dy')
+        else:
+            out.addColumn('dx', dx)
+            out.addColumn('dy', dy)
+            out.setMapping('x', 'x + dx')
+            out.setMapping('y', 'y + dy')
         
         try:
             out.mdh = self.input_localizations.mdh
