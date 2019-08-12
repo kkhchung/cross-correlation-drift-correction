@@ -11,7 +11,7 @@ from PYME.recipes.traits import Input, Output, Float, Enum, CStr, Bool, Int, Lis
 import numpy as np
 from PYME.IO import tabular
 from PYME.LMVis import renderers
-from scipy import ndimage, signal
+from scipy import ndimage, signal, interpolate
 
 def calc_fft_from_locs_helper(args):
     """
@@ -204,9 +204,10 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
 
         out = tabular.mappingFilter(namespace[self.input_for_mapping])
         t_out = out['t']
-        # linear interpolate
-        dx = np.interp(t_out, t_shift, shifts[:, 0])
-        dy = np.interp(t_out, t_shift, shifts[:, 1])
+        # cubic interpolate with no smoothing
+        dx = interpolate.CubicSpline(t_shift, shifts[:, 0])(t_out)
+        dy = interpolate.CubicSpline(t_shift, shifts[:, 1])(t_out)
+        dz = interpolate.CubicSpline(t_shift, shifts[:, 2])(t_out)
 
         if 'dx' in out.keys():
             # getting around oddity with mappingFilter
@@ -216,15 +217,19 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
             # Wrap with another level of mappingFilter so the new column becomes the 'old column'
             out.addColumn('dx', dx)
             out.addColumn('dy', dy)
+            out.addColumn('dz', dz)
             out = tabular.mappingFilter(out)
 #            out.mdh = namespace[self.input_localizations].mdh
             out.setMapping('x', 'x + dx')
             out.setMapping('y', 'y + dy')
+            out.setMapping('z', 'z + dz')
         else:
             out.addColumn('dx', dx)
             out.addColumn('dy', dy)
+            out.addColumn('dz', dz)
             out.setMapping('x', 'x + dx')
             out.setMapping('y', 'y + dy')
+            out.setMapping('z', 'z + dz')
 
         # propagate metadata, if present
         try:
@@ -262,6 +267,7 @@ class ApplyDrift(ModuleBase):
 #        dy = np.interp(t_out, t_shift, shifts[:, 1])
         dx = namespace[self.input_drift_interpolator][0](t_out)
         dy = namespace[self.input_drift_interpolator][1](t_out)
+        dz = namespace[self.input_drift_interpolator][2](t_out)
         
         if 'dx' in out.keys():
             # getting around oddity with mappingFilter
@@ -271,15 +277,19 @@ class ApplyDrift(ModuleBase):
             # Wrap with another level of mappingFilter so the new column becomes the 'old column'
             out.addColumn('dx', dx)
             out.addColumn('dy', dy)
+            out.addColumn('dz', dz)
             out = tabular.mappingFilter(out)
             out.mdh = namespace[self.input_localizations].mdh
             out.setMapping('x', 'x + dx')
             out.setMapping('y', 'y + dy')
+            out.setMapping('z', 'z + dz')
         else:
             out.addColumn('dx', dx)
             out.addColumn('dy', dy)
+            out.addColumn('dz', dz)
             out.setMapping('x', 'x + dx')
             out.setMapping('y', 'y + dy')
+            out.setMapping('z', 'z + dz')
         
         try:
             out.mdh = self.input_localizations.mdh
