@@ -253,6 +253,8 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
         Clean up - including cropping, thresholding, mask dilation.
         Performs n dimension gaussian fit and returns center.
     """
+    ft_1 = ndimage.fourier_gaussian(ft_1, 0.5)
+    ft_2 = ndimage.fourier_gaussian(ft_2, 0.5)
     # module level for multiprocessing
     tmp = ft_1 * np.conj(ft_2)    
     del ft_1, ft_2
