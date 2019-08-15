@@ -14,7 +14,7 @@ from PYME.recipes.base import ModuleBase, register_module, Filter
 from PYME.recipes.traits import Input, Output, Float, Enum, CStr, Bool, Int, List, File
 
 import numpy as np
-from scipy import ndimage, optimize, signal
+from scipy import ndimage, optimize, signal, interpolate
 from PYME.IO.image import ImageStack
 from PYME.IO.dataWrap import ListWrap
 
@@ -75,6 +75,7 @@ class PreprocessingFilter(ModuleBase):
     clip_to_lower = Float(0)
     threshold_upper = Float(65535)
     clip_to_upper = Float(0)
+    median_filter_size = Int(3)
     tukey_size = Float(0.25)
     cache = File("clip_cache.bin")
     output_name = Output('clipped_images')
@@ -97,7 +98,7 @@ class PreprocessingFilter(ModuleBase):
         raw_data = np.memmap(self.cache, dtype=dtype, mode='w+', shape=tuple(np.asarray(ims.data.shape[:3], dtype=np.long)))
         progress = 0.2 * ims.data.shape[2]
         for f in np.arange(0, ims.data.shape[2], chunk_size):
-            raw_data[:,:,f:f+chunk_size] = self.applyFilter(ims.data[:,:,f:f+chunk_size].squeeze())
+            raw_data[:,:,f:f+chunk_size] = self.applyFilter(ims.data[:,:,f:f+chunk_size])
             
             
             if (f+chunk_size >= progress):
@@ -115,11 +116,13 @@ class PreprocessingFilter(ModuleBase):
         """
             Performs the actual filtering here.
         """
-        
+        if self.median_filter_size > 0:
+            data = ndimage.median_filter(data, self.median_filter_size, mode='nearest')
         data[data >= self.threshold_upper] = self.clip_to_upper        
         data[data <= self.threshold_lower] = self.clip_to_lower        
         data -= self.clip_to_lower        
-        data = data * self._tukey_mask_2d
+        if self.tukey_size > 0:
+            data = data * self._tukey_mask_2d
         return data
 
     def completeMetadata(self, im):
@@ -134,11 +137,18 @@ class PreprocessingFilter(ModuleBase):
 class Binning(ModuleBase):
     """
         Downsample data (mean) in x, y, t. (Doesn't support z.)
-        Dumb. Image size must be divisible by bin size (in pixels).
+        X, Y pixels does't fill a full bin are dropped.
+        Z pixels can have a partially filled bin
         Via numpy reshape function.
     """
     
     inputName = Input('input')
+    x_start = Int(0)
+    x_end = Int(-1)
+    y_start = Int(0)
+    y_end = Int(-1)
+#    z_start = Int(0)
+#    z_end = Int(-1)
     binsize = List([1,1,1], minlen=3, maxlen=3)
 #    cache_1 = File("binning_cache_1.bin")
     cache_2 = File("binning_cache_2.bin")
@@ -150,7 +160,19 @@ class Binning(ModuleBase):
         
         binsize = np.asarray(self.binsize, dtype=np.int)
 #        print (binsize)
-        bincounts = -(-np.asarray(ims.data.shape[:3], dtype=np.long) // binsize)
+
+        # unconventional, end stop in inclusive
+        x_slice = np.arange(ims.data.shape[0]+1)[slice(self.x_start, self.x_end, 1)]
+        y_slice = np.arange(ims.data.shape[1]+1)[slice(self.y_start, self.y_end, 1)]
+        x_slice = x_slice[:x_slice.shape[0] // binsize[0] * binsize[0]]
+        y_slice = y_slice[:y_slice.shape[0] // binsize[1] * binsize[1]]
+#        print x_slice, len(x_slice)
+#        print y_slice, len(y_slice)
+        bincounts = np.asarray([len(x_slice)//binsize[0], len(y_slice)//binsize[1], -(-ims.data.shape[2]//binsize[2])], dtype=np.long)
+        
+        x_slice_ind = slice(x_slice[0], x_slice[-1]+1)
+        y_slice_ind = slice(y_slice[0], y_slice[-1]+1)
+        
 #        print (bincounts)
         new_shape = np.stack([bincounts, binsize], -1).flatten()
 #        print(new_shape)
@@ -193,7 +215,7 @@ class Binning(ModuleBase):
         progress = 0.2 * ims.data.shape[2]
 #        print 
         for i, f in enumerate(np.arange(0, ims.data.shape[2], binsize[2])):
-            raw_data_chunk = ims.data[:,:,f:f+binsize[2]].squeeze()
+            raw_data_chunk = ims.data[x_slice_ind,y_slice_ind,f:f+binsize[2]].squeeze()
             
             binned_image[:,:,i] = raw_data_chunk.reshape(new_shape_one_chunk).mean((1,3,5)).squeeze()
             
@@ -253,6 +275,8 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
         Clean up - including cropping, thresholding, mask dilation.
         Performs n dimension gaussian fit and returns center.
     """
+    ft_1 = ndimage.fourier_gaussian(ft_1, 0.5)
+    ft_2 = ndimage.fourier_gaussian(ft_2, 0.5)
     # module level for multiprocessing
     tmp = ft_1 * np.conj(ft_2)    
     del ft_1, ft_2
@@ -274,7 +298,7 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
     
 #    threshold = np.percentile(cross_corr[cropping], 95)
     
-    threshold = np.ptp(cross_corr[cross_corr_mask.astype(bool)]) * 0.50 + np.min(cross_corr[cross_corr_mask.astype(bool)])
+    threshold = np.ptp(cross_corr[cross_corr_mask.astype(bool)]) * 0.75 + np.min(cross_corr[cross_corr_mask.astype(bool)])
     
     cross_corr_mask *= cross_corr > threshold
     
@@ -284,8 +308,8 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
 #    print("mask {}".format(cross_corr_mask.sum()))
     
     labeled_image, labeled_counts = ndimage.label(cross_corr_mask)
-    if labeled_counts > 1:
-        max_index = np.argmax(ndimage.sum(cross_corr_mask, labeled_image, range(labeled_counts)))
+    if labeled_counts > 1: 
+        max_index = np.argmax(ndimage.mean(cross_corr_mask, labeled_image, range(1, labeled_counts+1))) + 1
         cross_corr_mask = labeled_image == max_index
     
     cross_corr_mask = ndimage.binary_dilation(cross_corr_mask, structure=np.ones((5,)*cross_corr_mask.ndim), iterations=1, border_value=0, )
@@ -322,21 +346,34 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
 #    offset += bounds[:, 0]
     
     cross_corr_thresholded[cross_corr_thresholded==0] = np.nan
-    cross_corr_thresholded -= np.nanmin(cross_corr_thresholded)
+#    cross_corr_thresholded -= np.nanmin(cross_corr_thresholded)
     cross_corr_thresholded /= np.nanmax(cross_corr_thresholded)
-#    p0 = [np.nanmax(cross_corr_thresholded), np.nanmin(cross_corr_thresholded)]
-    p0 = [1, 0]
+
+#    ### Gaussian fit
+##    p0 = [np.nanmax(cross_corr_thresholded), np.nanmin(cross_corr_thresholded)]
+#    p0 = [1, 0]
+#    grids = list()
+#    for i, d in enumerate(cross_corr_thresholded.shape):
+#        grids.append(np.arange(d))
+#        p0.extend([(d-1)*0.5, 0.5*d])
+##    print grids
+##    print p0
+#    res = optimize.least_squares(guassian_nd_error, p0, args=(grids, cross_corr_thresholded))
+##    print res.x 
+    
+    ### Rbf peak finding
+    p0 = []
     grids = list()
     for i, d in enumerate(cross_corr_thresholded.shape):
         grids.append(np.arange(d))
-        p0.extend([(d-1)*0.5, 0.5*d])
-#    print grids
-#    print p0
-    res = optimize.least_squares(guassian_nd_error, p0, args=(grids, cross_corr_thresholded))
-#    print res.x 
+        p0.append(0.5*d)
+    rbf_interpolator = build_rbf(grids, cross_corr_thresholded)
+    res = optimize.minimize(rbf_nd_error, p0, args=rbf_interpolator)
+    
     offset = list()
     for i in xrange(len(cross_corr_thresholded.shape)):
-        offset.append(res.x[2*i+2])
+#        offset.append(res.x[2*i+2])
+        offset.append(res.x[i])
     offset += bounds[:, 0]
 #    print offset
     
@@ -365,6 +402,24 @@ def gaussian_nd(p, dims):
 #        print 2+2*i, 2+2*i+1
         exponent += (dim-p[2+2*i])**2/(2*p[2+2*i+1]**2)
     return A * np.exp(-exponent) + bg
+
+def build_rbf(grids, data):
+    grid_nd_list = np.meshgrid(*grids, indexing='ij')
+    data = data.flatten()
+    mask = ~np.isnan(data)
+    data = data[mask]
+    grid_nd_list_cleaned = [grid_nd.flatten()[mask] for grid_nd in grid_nd_list]
+    grid_nd_list_cleaned.append(data)
+    return interpolate.Rbf(*grid_nd_list_cleaned, function='multiquadric', epsilon=1.)
+
+def rbf_nd_error(p, rbf_interpolator):
+    return -rbf_interpolator(*p)
+
+def rbf_nd(rbf_interpolator, dims):
+    out_shape = [len(d) for d in dims]
+    dims_nd_list = np.meshgrid(*dims, indexing='ij')
+    dims_nd_list_cleaned = [dim_nd.flatten() for dim_nd in dims_nd_list]
+    return rbf_interpolator(*dims_nd_list_cleaned).reshape(out_shape)
     
 
 #@register_module('RCCDriftCorrectionFromCachedFFT')
