@@ -152,7 +152,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
     
                 # .. we generate an image and store ft of image
                 t_slice = slice(*ti)
-                ft_images[i] = calc_fft_from_locs(xyz[:,t_slice].T, bxyz, self.tukey_size)
+                ft_images[i] = calc_fft_from_locs(xyz[:,t_slice].T, bxyz, filter_size=self.tukey_size)
                 
                 if ((i+1) % (n_steps//5) == 0):
                     print("{:.2f} s. Completed calculating {} of {} total ft images.".format(time.time() - self._start_time, i+1, n_steps))

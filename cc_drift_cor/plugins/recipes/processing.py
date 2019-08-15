@@ -308,8 +308,8 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
 #    print("mask {}".format(cross_corr_mask.sum()))
     
     labeled_image, labeled_counts = ndimage.label(cross_corr_mask)
-    if labeled_counts > 1:
-        max_index = np.argmax(ndimage.sum(cross_corr_mask, labeled_image, range(labeled_counts)))
+    if labeled_counts > 1: 
+        max_index = np.argmax(ndimage.mean(cross_corr_mask, labeled_image, range(1, labeled_counts+1))) + 1
         cross_corr_mask = labeled_image == max_index
     
     cross_corr_mask = ndimage.binary_dilation(cross_corr_mask, structure=np.ones((5,)*cross_corr_mask.ndim), iterations=1, border_value=0, )
