@@ -52,13 +52,13 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
     Wang et al. Optics Express 2014 22:13 (Bo Huang's RCC algorithm).
     Derived class for the localisation based verison of RCC.
     
-    ** The built-in 'apply shift' only has a basic linear interpolator. Maybe need to remove at some stage. **
+    ** The built-in 'apply shift' has a cubic interpolate interpolator with no smoothing.**
     """
     input_for_correction = Input('Localizations')
     input_for_mapping = Input('Localizations')
     # redundant cross-corelation, mean cross-correlation, direction cross-correlation
-    step = Int(200)
-    window = Int(500)
+    step = Int(2500)
+    window = Int(2500)
     binsize = Float(30)
     flatten_z = Bool()
     tukey_size = Float(0.25)
@@ -82,12 +82,12 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
             bz = np.concatenate([bz, [bz[-1] + bz[1] - bz[0]]])
         assert (bx.shape[0] % 2 == 1) and (by.shape[0] % 2 == 1), "Ops. Image not correctly padded to even size."
 
-        # start time of all windows, partial window near end of pipeline is omitted
-        time_values = np.arange(t.min(), t.max() - self.window + 1, self.step)
+        # start time of all windows, allow partial window near end of pipeline
+        time_values = np.arange(t.min(), t.max() + 1, self.step)
         # 2d array, start and end time of windows
-        time_values = np.stack([time_values, time_values + self.window], axis=1)        
+        time_values = np.stack([time_values, np.clip(time_values + self.window, None, t.max())], axis=1)        
         n_steps = time_values.shape[0]
-        # center time of center for returning
+        # center time of center for returning. last window may have different spacing
         time_values_mid = time_values.mean(axis=1)
 
         if (np.any(np.diff(t) < 0)): # in case pipeline is not sorted for whatever reason
@@ -100,6 +100,11 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         time_indexes = np.zeros_like(time_values, dtype=int)
         time_indexes[:, 0] = np.searchsorted(t, time_values[:, 0], side='left')
         time_indexes[:, 1] = np.searchsorted(t, time_values[:, 1]-1, side='right')
+        
+#        print('time indexes')
+#        print(time_values)
+#        print(time_values_mid)
+#        print(time_indexes)
 
         # Fourier transformed (and binned) set of images to correlate against
         # one another
@@ -169,6 +174,8 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
             if os.path.isfile(self.ft_cache):
                 os.remove(self.ft_cache)
         
+#        print(shifts)
+#        print(coefs)
         return time_values_mid, self.binsize * shifts[:, dims_order], coefs
 
     def execute(self, namespace):
