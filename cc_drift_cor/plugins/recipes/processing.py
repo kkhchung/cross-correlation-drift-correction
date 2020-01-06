@@ -566,6 +566,8 @@ class RCCDriftCorrectionBase(ModuleBase):
 
         # Estimate drift
         drifts = np.matmul(np.linalg.pinv(coefs), shifts)
+#        print(t_shift)
+#        print(drifts)
         
         print("{:.2f} s. Done solving shifts array.".format(time.time() - self._start_time))
         
@@ -841,6 +843,10 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         if self.ft_cache == "":
             ft_images = np.zeros(ft_images_shape, dtype=np.complex)
         else:
+            try:
+                del ft_images
+            except:
+                pass
             ft_images = np.memmap(self.ft_cache, dtype=np.complex, mode='w+', shape=ft_images_shape)
             
 #        print(ft_images.shape)

@@ -31,6 +31,9 @@ register_module_elsewhere('Image_Post_Shift', processing.ShiftImage)
 register_module_elsewhere('Drift_Save', io.DriftOutput)
 register_module_elsewhere('Drift_Load', io.LoadDrift)
 register_module_elsewhere('Drift_Interpolate', io.InterpolateDrift)
+register_module_elsewhere('Drift_Load_Interpolate', io.LoadDriftandInterp)
+#register_module_elsewhere('Drift_Combine', io.DriftCombine)
+
 
 
 register_module_elsewhere('Locs_RCC', localisations.RCCDriftCorrection)
