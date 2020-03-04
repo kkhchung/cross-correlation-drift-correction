@@ -371,7 +371,7 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
     res = optimize.minimize(rbf_nd_error, p0, args=rbf_interpolator)
     
     offset = list()
-    for i in xrange(len(cross_corr_thresholded.shape)):
+    for i in np.arange(len(cross_corr_thresholded.shape)):
 #        offset.append(res.x[2*i+2])
         offset.append(res.x[i])
     offset += bounds[:, 0]
@@ -459,6 +459,7 @@ class RCCDriftCorrectionBase(ModuleBase):
             coefs_size = n_steps * self.corr_window - self.corr_window * (self.corr_window + 1) / 2
         else:
             coefs_size = n_steps * (n_steps-1) / 2
+        coefs_size = int(coefs_size)
         coefs = np.zeros((coefs_size, n_steps-1))
         shifts = np.zeros((coefs_size, 3))
 
