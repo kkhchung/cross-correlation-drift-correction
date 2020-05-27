@@ -134,11 +134,6 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         
         print("{:.2f} s. About to start heavy lifting.".format(time.time() - self._start_time))
         
-#        tukey_mask_x = signal.tukey(ims.data.shape[0], self.tukey_size)
-#        tukey_mask_y = signal.tukey(ims.data.shape[1], self.tukey_size)
-#        tukey_mask_2d = np.multiply(*np.meshgrid(tukey_mask_x, tukey_mask_y, indexing='ij'))[:,:,None]
-
-
         # fill ft_images
         # if multiprocessing, can either use or not caching
         # if not multiprocessing, don't pass filenames for caching, just the memmap array is fine
@@ -272,9 +267,7 @@ class ApplyDrift(ModuleBase):
         out.mdh = namespace[self.input_localizations].mdh
         
         t_out = out['t']
-        # linear interpolate
-#        dx = np.interp(t_out, t_shift, shifts[:, 0])
-#        dy = np.interp(t_out, t_shift, shifts[:, 1])
+
         dx = namespace[self.input_drift_interpolator][0](t_out)
         dy = namespace[self.input_drift_interpolator][1](t_out)
         dz = namespace[self.input_drift_interpolator][2](t_out)

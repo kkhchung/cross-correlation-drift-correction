@@ -247,10 +247,10 @@ class LoadDriftandInterp(ModuleBase):
         namespace[self.output_drift_plot] = Plot(partial(self.generate_drift_plot, tIndexes, drifts, t_full, drift_full))
         
     def generate_drift_plot(self, t, shifts, t_full, shifts_full):
-        print(len(t))
-        print(len(shifts))
-        print(t_full.shape)
-        print(shifts_full.shape)
+#        print(len(t))
+#        print(len(shifts))
+#        print(t_full.shape)
+#        print(shifts_full.shape)
         dims = shifts_full.shape[1]
         dim_name = ['x', 'y', 'z']
         from matplotlib import pyplot

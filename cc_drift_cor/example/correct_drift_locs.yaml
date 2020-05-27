@@ -40,3 +40,6 @@
     input_drift_interpolator: drift_interpolator
     input_localizations: Localizations
     output_name: corrected_localizations
+- chung_cc.Drift_Save:
+    input_name: drift_raw
+    output_dummy: dummy

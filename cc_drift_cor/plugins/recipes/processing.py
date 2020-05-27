@@ -27,30 +27,6 @@ from functools import partial
 import logging
 logger=logging.getLogger(__name__)
 
-
-## Can't use. Output wrapped with bugged ListWrap
-#@register_module('Clip')
-#class ClipFilter(Filter):
-#    """
-#        Bypass saving the masks in memory c.f. thresholding & (invert) & multiplication.
-#        Replaces out of range values to zeros.
-#    """
-#    threshold_lower = Float(0)
-#    threshold_upper = Float(0)
-#    
-#    def applyFilter(self, data, chanNum, frNum, im):
-#        
-##        return np.clip(data, self.threshold_lower, self.threshold_upper)
-#        data = np.asarray(data)
-#        data[data < self.threshold_lower] = 0
-#        data[data > self.threshold_upper] = 0
-#        
-#        return data
-#
-#    def completeMetadata(self, im):
-#        im.mdh['Processing.Clipping.LowerBounds'] = self.threshold_lower
-#        im.mdh['Processing.Clipping.UpperBounds'] = self.threshold_upper
-
 #class DerivedModule(ModuleBase):
 #    """
 #    In the absent of build-in abstract methods support
@@ -101,15 +77,13 @@ class PreprocessingFilter(ModuleBase):
         raw_data = np.memmap(self.cache, dtype=dtype, mode='w+', shape=tuple(np.asarray(ims.data.shape[:3], dtype=np.long)))
         progress = 0.2 * ims.data.shape[2]
         for f in np.arange(0, ims.data.shape[2], chunk_size):
-            raw_data[:,:,f:f+chunk_size] = self.applyFilter(ims.data[:,:,f:f+chunk_size])
-            
+            raw_data[:,:,f:f+chunk_size] = self.applyFilter(ims.data[:,:,f:f+chunk_size])            
             
             if (f+chunk_size >= progress):
                 raw_data.flush()
                 progress += 0.2 * ims.data.shape[2]
                 print("{:.2f} s. Completed clipping {} of {} total images.".format(time.time() - self._start_time, min(f+chunk_size, ims.data.shape[2]), ims.data.shape[2]))
         
-#        clipped_images = ImageStack(self.applyFilter(raw_data), mdh=ims.mdh)
         clipped_images = ImageStack(raw_data, mdh=ims.mdh)
         self.completeMetadata(clipped_images)
         
@@ -184,32 +158,9 @@ class Binning(ModuleBase):
 #        binned_image = ims.data[:,:,:].reshape(new_shape)
         dtype = ims.data[:,:,0].dtype
         
-        
-#        ### This was for manual caching the data first, too slow
-#        print(ims.data.shape[:3])
-#        chunk_size = 100000000 / ims.data.shape[0] / ims.data.shape[1] / dtype.itemsize
-#        chunk_size = max(1, chunk_size)
-#        print chunk_size
-#        raw_data = np.memmap(self.cache_1, dtype=dtype, mode='w+', shape=tuple(np.asarray(ims.data.shape[:3], dtype=np.long)))
-
-#        
-#        progress = 0.2 * ims.data.shape[2]     
-#        for f in np.arange(0, ims.data.shape[2], chunk_size):
-#            raw_data[:,:,f:f+chunk_size] = ims.data[:,:,f:f+chunk_size].squeeze()
-#            
-
-#            if (f+chunk_size > progress):
-#                raw_data.flush()
-#                progress += 0.2 * ims.data.shape[2]  
-#                print("{:.2f} s. Completed binning {} of {} total images.".format(time.time() - self._start_time, min(f+chunk_size, ims.data.shape[2]), ims.data.shape[2]))
-#                    
-#        raw_data.shape = new_shape
-        
-#        binned_image = binned_image.mean((1,3,5))
 #        print bincounts
         binned_image = np.memmap(self.cache_2, dtype=dtype, mode='w+', shape=tuple(np.asarray(bincounts, dtype=np.long)))
 #        print binned_image.shape
-#        print raw_data.shape
         
         new_shape_one_chunk = new_shape.copy()
         new_shape_one_chunk[4] = 1
@@ -226,9 +177,6 @@ class Binning(ModuleBase):
                 binned_image.flush()
                 progress += 0.2 * ims.data.shape[2]
                 print("{:.2f} s. Completed binning {} of {} total images.".format(time.time() - self._start_time, min(f+binsize[2], ims.data.shape[2]), ims.data.shape[2]))
-        
-        
-#        binned_image = raw_data.mean((1,3,5))
 
 #        print(type(binned_image))
         im = ImageStack(binned_image, titleStub=self.outputName)
@@ -508,7 +456,7 @@ class RCCDriftCorrectionBase(ModuleBase):
                     if not self.ft_cache == "":
                         ft_1 = i
                         ft_2 = j
-#                    pool_results.append(self._pool.apply_async(calc_shift, args=(ft_1, ft_2, autocor_shift, (self.ft_cache, ft_images.dtype, ft_images.shape),)))
+
                     ft_1_cache.append(ft_1)
                     ft_2_cache.append(ft_2)
                     autocor_shift_cache.append(autocor_shift)
@@ -695,8 +643,6 @@ def shift_image(ft_image, shifts, index=None, cache_fft=None, cache_image=None, 
         ft_images = np.memmap(path, mode="r", dtype=dtype, shape=shape)
         ft_image = ft_images[index]
         del ft_images
-#    else:
-#        ft_image = index_or_img
         
     if not cache_image is None and cache_image[0] != "":
         path, dtype, shape = cache_image
@@ -732,10 +678,8 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
     """
     
     input_image = Input('input')
-#    binning = List([1,1,1], minlen=3, maxlen=3)
-    
     image_cache = File("rcc_shifted_image.bin")
-    outputName = Output('drift_corrected_image')
+#    outputName = Output('drift_corrected_image')
     output_drift = Output('drift')
     
     class WrappedImage(object):
@@ -750,19 +694,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         swaped_axes = (0,0)
         
         def __init__(self, ims):
-#            print ims.data.__class__
-#            print isinstance(ims.data, ListWrap)
-#            
-#            print 'strange'
-#            ## Wrapper to avoid bug in ListWrap
-#            if isinstance(ims.data, ListWrap):                
-#                self.ims = ImageStack(np.stack([ims.data[:,:,:,i] for i in range(ims.data.shape[3])], -1), mdh=ims.mdh)
-#                print self.ims.data.shape
-#            else:
             self.ims = ims
-#            
-#            print self.ims.data.__class__
-#            print 'stranger'
             
             nDims = self.ims.data.nTrueDims
             if nDims < 3 or nDims > 4:
@@ -832,7 +764,6 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         
         dims_largest_index = np.argmax(dims_length)
         dims_order[-1], dims_order[dims_largest_index] = dims_order[dims_largest_index], dims_order[-1]
-#        images = np.swapaxes(images, -2, dims_largest_index)
         images.swapaxes(-1, dims_largest_index)
         
         images_shape = images.shape
@@ -887,56 +818,6 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         
         return np.arange(images.shape[0]), shifts[:, dims_order], coefs
     
-#    def shift_images(self, shifts):
-#        """
-#            Moved to separate module. But this is still better, 3D vs 2D?
-#        """
-#        import time
-#        raw_shifts = shifts[:, np.argsort(self._images.dims_order[1:])]
-#        
-##        print(self._ft_images.shape)
-##        padding = np.stack((self._ft_images.shape,)*2, -1)/2
-##        padding[0, :] = 0
-##        print(padding)
-##        self._ft_images = np.pad(self._ft_images, padding, mode="constant", constant_values=0)
-#        
-#        kx = (np.fft.fftfreq(self._ft_images.shape[1])) 
-#        ky = (np.fft.fftfreq(self._ft_images.shape[2]))
-#        kz = (np.fft.fftfreq(self._ft_images.shape[3])) * 0.5
-#        kx, ky, kz = np.meshgrid(kx, ky, kz, indexing='ij')
-#        
-#        if self.image_cache == "":
-#            data_shifted = np.empty((self._ft_images.shape[0], self._ft_images.shape[1], self._ft_images.shape[2], 2*(self._ft_images.shape[3]-1)))
-#        else:
-#            data_shifted = np.memmap(self.image_cache, dtype=np.float, mode='w+', shape=(self._ft_images.shape[0], self._ft_images.shape[1], self._ft_images.shape[2], 2*(self._ft_images.shape[3]-1)))            
-#        
-#        if self.multiprocessing:
-#
-#            none_args = ((None), ) * self._ft_images.shape[0]
-#            fft_cache_args = ((self.ft_cache, self._ft_images.dtype, self._ft_images.shape), ) * self._ft_images.shape[0]
-#            image_cache_args = ((self.image_cache, data_shifted.dtype, data_shifted.shape), ) * self._ft_images.shape[0]
-#            args = zip(none_args, raw_shifts, np.arange(self._ft_images.shape[0]), fft_cache_args, image_cache_args)
-#            
-#            for i, (j, res) in enumerate(self._pool.imap_unordered(shift_image_helper, args)):
-#                if self.image_cache == "":
-#                    data_shifted[j] = res
-#                    
-#                if ((i+1) % (self._ft_images.shape[0]//5) == 0):
-#                    print("{:.2f} s. Completed shifting {} of {} total images.".format(time.time() - self._start_time, i+1, self._ft_images.shape[0]))
-#        else:
-#            for i in np.arange(self._ft_images.shape[0]):
-#                data_shifted[i] = shift_image(self._ft_images[i], raw_shifts[i], cache_kxyz=(kx, ky, kz))
-#                
-#                if ((i+1) % (self._ft_images.shape[0]//5) == 0):
-#                    print("{:.2f} s. Completed shifting {} of {} total images.".format(time.time() - self._start_time, i+1, self._ft_images.shape[0]))
-#            
-#        data_shifted = np.moveaxis(data_shifted, 0, self._images.dims_order[0])
-#        
-#        axes_a = self._images.dims_order[self._images.swaped_axes[0]+1]
-#        axes_b = self._images.dims_order[self._images.swaped_axes[1]+1]
-#        data_shifted = np.swapaxes(data_shifted, axes_a, axes_b)
-#        
-#        return data_shifted
     
     def execute(self, namespace):
         try:
@@ -959,13 +840,6 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         
         ims = namespace[self.input_image]
 
-#        try:
-#            shift_max = 1. * self.shift_max / ims.mdh.voxelsize.x
-#            if ims.mdh.voxelsize.units == "um":
-#                self.shift_max = self.shift_max / 1E3
-##            print("shift_max converted {:.2f} nm to {:.2f} pixel".format(self.shift_max, shift_max))
-#        except:
-#            print "Parsing metadata for voxel size failed. Shift_max will remain in units of pixels"
         shift_max = self.shift_max
 
 #        mProfile.profileOn(['processing.py'])
@@ -981,24 +855,13 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         # convert frame-to-frame drift to drift from origin
         shifts = np.cumsum(shifts, 0)
         
-        # image drift correction based on drift measured
-#        drift_corrected_image = self.shift_images(shifts)
-        
         del self._ft_images
 #        del self.image_cache
         
         if self.multiprocessing:
             self._pool.close()
             self._pool.join()
-
-#        out = ImageStack(drift_corrected_image.copy(), titleStub = self.outputName)
-#        del drift_corrected_image
-#        
-#        out.mdh.copyEntriesFrom(ims.mdh)
-#        out.mdh['Parent'] = ims.filename
-
-#        namespace[self.outputName] = out
-        
+       
 #        print shifts
         
         try:
@@ -1051,87 +914,24 @@ class ShiftImage(ModuleBase):
     def execute(self, namespace):
         self._start_time = time.time()
         try:
-            del self._ft_images
+#            del self._ft_images
             del self.image_cache
         except:
             pass
         
         ims = namespace[self.input_image]
         
-#        #quick and dirty, assume dim 1 is t, ignore z, c
-#        padding = np.stack((ims.data.shape[:-1],)*2, -1)
-#        padding[-1,:] = 0
-#        
-#        padding *= self.padding_multipler
-##        self._padding = padding        
-#        
-##        padded_image = np.pad(ims.data[:,:,:], padding, mode='constant')
-##        images_shape = padded_image.shape
-##        print images_shape
-#        
-#        dtype = ims.data[:,:,0].dtype
-#        images_shape = np.asarray(ims.data.shape[:3], dtype=np.long) + padding.sum((1))
-#        images_shape = tuple(images_shape)
-##        print images_shape
-#        padded_image = np.memmap(self.image_cache_2, dtype=dtype, mode='w+', shape=images_shape)
-#        
-#        chunk_size = 100000000 / ims.data.shape[0] / ims.data.shape[1] / dtype.itemsize
-#        chunk_size = max(1, chunk_size)
-##        print chunk_size
-#        
-#        for f in np.arange(0, images_shape[2], chunk_size):
-#            padded_image[padding[0,0]:padding[0,0]+ims.data.shape[0],padding[1,0]:padding[1,0]+ims.data.shape[1],f:f+chunk_size] = ims.data[:,:,f:f+chunk_size].squeeze()
-#            
-##            print (f+1)
-##            print images_shape[2]//5
-#            progress = 0.2 * images_shape[2]
-#            if (f+chunk_size > progress):
-#                padded_image.flush()
-#                progress += 0.2 * ims.data.shape[2]
-#                print("{:.2f} s. Completed padding {} of {} total images.".format(time.time() - self._start_time, min(f+chunk_size, images_shape[2]), images_shape[2]))
-#        
-#        # quick and dirty coding, no optimizing
-#        if self.ft_cache == "":
-#            ft_images = np.zeros(images_shape, dtype=np.complex)
-#        else:
-#            ft_images = np.memmap(self.ft_cache, dtype=np.complex, mode='w+', shape=images_shape)
-#            
-#        for i in np.arange(images_shape[2]):
-#            ft_images[:,:,i] = np.fft.fftn(padded_image[:,:,i])
-#            
-#            if ((i+1) % (images_shape[2]//5) == 0):
-#                ft_images.flush()
-#                print("{:.2f} s. Completed fft {} of {} total images.".format(time.time() - self._start_time, i+1, images_shape[2]))
-#            
-#        self._ft_images = ft_images
-
-#        shifts_t, shifts_xyz = namespace[self.input_shift]
-#        print shifts_t
-#        print shifts_xyz
-
         t_out = np.arange(ims.data.shape[2], dtype=np.float)
         
         if 'recipe.binning' in ims.mdh.keys():
             t_out *= ims.mdh['recipe.binning'][2]
             t_out += 0.5*ims.mdh['recipe.binning'][2]
-#        print
-#        print shifts_xyz
 #        print t_out
-#        print shifts_t
-        # linear interpolate
-#        dx = np.interp(t_out, shifts_t, shifts_xyz[:, 0])
-#        dy = np.interp(t_out, shifts_t, shifts_xyz[:, 1])
-#        print dx.shape
-#        print shifts_xyz[:, 0]
-#        print dx
 
         dx = namespace[self.input_drift_interpolator][0](t_out)
         dy = namespace[self.input_drift_interpolator][1](t_out)
         
         shifted_images = self.shift_images(ims, np.stack([dx, dy], 1), ims.mdh)
-#        shifted_image = shifted_image[padding[0,0]:padding[0,0]+ims.data.shape[0],padding[1,0]:padding[1,0]+ims.data.shape[1], :]
-#        print padding
-#        print shifted_image.shape
         
         namespace[self.outputName] = ImageStack(shifted_images, titleStub = self.outputName, mdh=ims.mdh)
             
@@ -1144,9 +944,7 @@ class ShiftImage(ModuleBase):
         
         dtype = ims.data[:,:,0].dtype
         padded_image = np.zeros(padded_image_shape, dtype=dtype)
-        
-#        raw_shifts = shifts[:, np.argsort(self._images.dims_order[1:])]        
-        
+               
         kx = (np.fft.fftfreq(padded_image_shape[0])) 
         ky = (np.fft.fftfreq(padded_image_shape[1]))
 #        kz = (np.fft.fftfreq(self._ft_images.shape[3])) * 0.5
@@ -1160,23 +958,7 @@ class ShiftImage(ModuleBase):
             shifted_images = np.empty(images_shape)
         else:
             shifted_images = np.memmap(self.image_cache, dtype=np.float, mode='w+', shape=images_shape)
-        
-#        if self.multiprocessing:
-#
-#            none_args = ((None), ) * self._ft_images.shape[0]
-#            fft_cache_args = ((self.ft_cache, self._ft_images.dtype, self._ft_images.shape), ) * self._ft_images.shape[0]
-#            image_cache_args = ((self.image_cache, data_shifted.dtype, data_shifted.shape), ) * self._ft_images.shape[0]
-#            args = zip(none_args, raw_shifts, np.arange(self._ft_images.shape[0]), fft_cache_args, image_cache_args)
-#            
-#            for i, (j, res) in enumerate(self._pool.imap_unordered(shift_image_helper, args)):
-#                if self.image_cache == "":
-#                    data_shifted[j] = res
-#                    
-#                if ((i+1) % (self._ft_images.shape[0]//5) == 0):
-#                    print("{:.2f} s. Completed shifting {} of {} total images.".format(time.time() - self._start_time, i+1, self._ft_images.shape[0]))
-#        else:
             
-#        print(self._ft_images.shape)
 #        print(shifts.shape)
 #        print(kx.shape, ky.shape)
         
@@ -1199,8 +981,6 @@ class ShiftImage(ModuleBase):
             repr(e)
         
 #        print shifts_in_pixels
-        
-
             
         for i in np.arange(ims.data.shape[2]):
 #            print i
@@ -1216,13 +996,7 @@ class ShiftImage(ModuleBase):
             if ((i+1) % (shifted_images.shape[-1]//5) == 0):
                 if isinstance(shifted_images, np.memmap):
                     shifted_images.flush()
-                print("{:.2f} s. Completed shifting {} of {} total images.".format(time.time() - self._start_time, i+1, shifted_images.shape[-1]))
-            
-#        data_shifted = np.moveaxis(data_shifted, 0, self._images.dims_order[0])
-        
-#        axes_a = self._images.dims_order[self._images.swaped_axes[0]+1]
-#        axes_b = self._images.dims_order[self._images.swaped_axes[1]+1]
-#        data_shifted = np.swapaxes(data_shifted, axes_a, axes_b)
+                print("{:.2f} s. Completed shifting {} of {} total images.".format(time.time() - self._start_time, i+1, shifted_images.shape[-1]))            
         
         return shifted_images
     

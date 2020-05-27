@@ -1,10 +1,9 @@
 - chung_cc.Image_RCC:
     corr_window: -1
-    ft_cache: fft.bin
+    ft_cache: fft_cache.bin
     image_cache: img_cache.bin
     input_image: clipped_images
     multiprocessing: true
-    outputName: dump_drift_corrected_image
     output_cross_cor: cross_cor
     output_drift: drift_raw
     output_drift_plot: dump_drift_plot
