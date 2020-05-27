@@ -12,12 +12,12 @@ based off PYME recipes processing.py
 
 from PYME.recipes.base import ModuleBase, register_module, Filter, OutputModule
 from PYME.recipes.traits import Input, Output, Float, Enum, CStr, Bool, Int, List, File
+from PYME.recipes import processing
+from PYME.recipes.graphing import Plot
 
 import numpy as np
 from scipy import ndimage, interpolate
 from PYME.IO.image import ImageStack
-
-from PYME.recipes import processing
 
 from functools import partial
 
@@ -154,19 +154,11 @@ class InterpolateDrift(ModuleBase):
         namespace[self.output_drift_interpolated] = (t_full, drift_full)
         namespace[self.output_drift_interpolator] = spl
         
-        # non essential, only for plotting out drift data
-        fig = self.generate_drift_plot(tIndex, drift, t_full, drift_full)
-        
-        image_drift_shape = fig.canvas.get_width_height()
-        fig.canvas.draw()
-        image_drift = np.fromstring(fig.canvas.tostring_rgb(), dtype='uint8')
-        image_drift = image_drift.reshape(image_drift_shape[1], image_drift_shape[0], 1, 3)
-        image_drift = np.swapaxes(image_drift, 0, 1)
-        namespace[self.output_drift_plot] = ImageStack(image_drift)
+#        # non essential, only for plotting out drift data
+        namespace[self.output_drift_plot] = Plot(partial(self.generate_drift_plot, tIndex, drift, t_full, drift_full))
         
     def generate_drift_plot(self, t, shifts, t_full, shifts_full):
         from matplotlib import pyplot
-        pyplot.ioff()
         fig, ax = pyplot.subplots(1, 1)
         lines = ax.plot(t, shifts, marker='.', linestyle=None)
 
@@ -176,7 +168,6 @@ class InterpolateDrift(ModuleBase):
         ax.set_ylabel("Drift (nm)")
         ax.legend(lines, ['x', 'y', 'z'][:shifts.shape[1]])
         fig.tight_layout()
-        pyplot.ion()
         
         return fig
 
@@ -253,14 +244,7 @@ class LoadDriftandInterp(ModuleBase):
         namespace[self.output_drift_interpolator] = spl_combined
         
         # non essential, only for plotting out drift data
-        fig = self.generate_drift_plot(tIndexes, drifts, t_full, drift_full)
-        
-        image_drift_shape = fig.canvas.get_width_height()
-        fig.canvas.draw()
-        image_drift = np.fromstring(fig.canvas.tostring_rgb(), dtype='uint8')
-        image_drift = image_drift.reshape(image_drift_shape[1], image_drift_shape[0], 1, 3)
-        image_drift = np.swapaxes(image_drift, 0, 1)
-        namespace[self.output_drift_plot] = ImageStack(image_drift)
+        namespace[self.output_drift_plot] = Plot(partial(self.generate_drift_plot, tIndexes, drifts, t_full, drift_full))
         
     def generate_drift_plot(self, t, shifts, t_full, shifts_full):
         print(len(t))
@@ -270,7 +254,6 @@ class LoadDriftandInterp(ModuleBase):
         dims = shifts_full.shape[1]
         dim_name = ['x', 'y', 'z']
         from matplotlib import pyplot
-        pyplot.ioff()
         fig, axes = pyplot.subplots(dims, 1, figsize=(4, 3*dims))
         
         for i, ax in enumerate(axes):
@@ -287,6 +270,5 @@ class LoadDriftandInterp(ModuleBase):
             ax.set_title(dim_name[i])
 #        ax.legend(lines, ['x', 'y', 'z'][:shifts.shape[1]])
         fig.tight_layout()
-        pyplot.ion()
         
         return fig         

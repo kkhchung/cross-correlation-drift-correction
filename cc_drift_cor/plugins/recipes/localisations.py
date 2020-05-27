@@ -7,11 +7,14 @@ Created on Wed Apr 03 14:15:49 2019
 
 from PYME.recipes.base import register_module, ModuleBase, Filter
 from PYME.recipes.traits import Input, Output, Float, Enum, CStr, Bool, Int, List, DictStrStr, DictStrList, ListFloat, ListStr, File
+from PYME.recipes.graphing import Plot
 
 import numpy as np
 from PYME.IO import tabular
 from PYME.LMVis import renderers
 from scipy import ndimage, signal, interpolate
+
+from functools import partial
 
 def calc_fft_from_locs_helper(args):
     """
@@ -248,7 +251,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         namespace[self.output_drift] = t_shift, shifts
         
         # non essential, only for plotting out drift data
-        namespace[self.output_drift_plot] = self.generate_drift_plot(t_shift, shifts)
+        namespace[self.output_drift_plot] = Plot(partial(self.generate_drift_plot, t_shift, shifts))
         
         namespace[self.output_cross_cor] = self._cc_image
 

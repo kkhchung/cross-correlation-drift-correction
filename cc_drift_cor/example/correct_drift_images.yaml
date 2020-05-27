@@ -1,0 +1,24 @@
+- chung_cc.Image_RCC:
+    corr_window: -1
+    ft_cache: fft.bin
+    image_cache: img_cache.bin
+    input_image: clipped_images
+    multiprocessing: true
+    outputName: dump_drift_corrected_image
+    output_cross_cor: cross_cor
+    output_drift: drift_raw
+    output_drift_plot: dump_drift_plot
+- chung_cc.Drift_Interpolate:
+    input_drift_raw: drift_raw
+    output_drift_interpolated: drift_interpolated
+    output_drift_interpolator: drift_interpolator
+    output_drift_plot: drift_plot
+- chung_cc.Image_Post_Shift:
+    image_cache: shift_cache.bin
+    input_drift_interpolator: drift_interpolator
+    input_image: input
+    outputName: drift_corrected_image
+- chung_cc.Image_Pre_Clip&Filter:
+    input_name: input
+    median_filter_size: -1
+    output_name: clipped_images
