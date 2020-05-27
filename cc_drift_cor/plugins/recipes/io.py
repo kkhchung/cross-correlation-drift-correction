@@ -136,6 +136,7 @@ class InterpolateDrift(ModuleBase):
         
 #        # non essential, only for plotting out drift data
         namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndex, drift, t_full, drift_full))
+        namespace[self.output_drift_plot].plot()
 
 
 class LoadDriftandInterp(ModuleBase):
@@ -212,6 +213,7 @@ class LoadDriftandInterp(ModuleBase):
         
         # non essential, only for plotting out drift data
         namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndexes, drifts, t_full, drift_full))
+        namespace[self.output_drift_plot].plot()
         
 def generate_drift_plot(t, shifts, t_full=None, shifts_full=None):
     from matplotlib import pyplot
