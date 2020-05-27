@@ -23,6 +23,7 @@ from PYME.IO.dataWrap import ListWrap
 import time
 
 from functools import partial
+from .io import generate_drift_plot
 
 import logging
 logger=logging.getLogger(__name__)
@@ -591,20 +592,7 @@ class RCCDriftCorrectionBase(ModuleBase):
         shifts = np.cumsum(shifts, 0)
 
         namespace[self.output_drift] = t_shift, shifts
-        
-    def generate_drift_plot(self, t, shifts):
-        """
-            Generates plot of drift and returns matplotlib figure object
-        """
-        from matplotlib import pyplot
-        fig, ax = pyplot.subplots(1, 1)
-        lines = ax.plot(t, shifts, marker='.', )
-        ax.set_xlabel("Time (frame)")
-        ax.set_ylabel("Drift (nm)")
-        ax.legend(lines, ['x', 'y', 'z'][:shifts.shape[1]])
-        fig.tight_layout()
-        
-        return fig
+
 
 def calc_fft_from_image_helper(args):
     """
@@ -887,7 +875,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
 #        print shifts
         
 #        # non essential, only for plotting out drift data
-        namespace[self.output_drift_plot] = Plot(partial(self.generate_drift_plot, t_shift, shifts))
+        namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, t_shift, shifts))
         
         namespace[self.output_cross_cor] = self._cc_image
         

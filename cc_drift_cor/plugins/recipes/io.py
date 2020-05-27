@@ -92,28 +92,8 @@ class LoadDrift(ModuleBase):
         namespace[self.output_drift_raw] = (tIndex, drift)
         
         # non essential, only for plotting out drift data
-        fig = self.generate_drift_plot(tIndex, drift)
-        
-        image_drift_shape = fig.canvas.get_width_height()
-        fig.canvas.draw()
-        image_drift = np.fromstring(fig.canvas.tostring_rgb(), dtype='uint8')
-        image_drift = image_drift.reshape(image_drift_shape[1], image_drift_shape[0], 1, 3)
-        image_drift = np.swapaxes(image_drift, 0, 1)
-        namespace[self.output_drift_plot] = ImageStack(image_drift)
-        
-    def generate_drift_plot(self, t, shifts):
-        from matplotlib import pyplot
-        pyplot.ioff()
-        fig, ax = pyplot.subplots(1, 1)
-        lines = ax.plot(t, shifts, marker='.', linestyle=None)
-        
-        ax.set_xlabel("Time (frame)")
-        ax.set_ylabel("Drift (nm)")
-        ax.legend(lines, ['x', 'y', 'z'][:shifts.shape[1]])
-        fig.tight_layout()
-        pyplot.ion()
-        
-        return fig
+        namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndex, drift))
+
         
 #@register_module('InterpolateDrift')
 class InterpolateDrift(ModuleBase):
@@ -155,21 +135,8 @@ class InterpolateDrift(ModuleBase):
         namespace[self.output_drift_interpolator] = spl
         
 #        # non essential, only for plotting out drift data
-        namespace[self.output_drift_plot] = Plot(partial(self.generate_drift_plot, tIndex, drift, t_full, drift_full))
-        
-    def generate_drift_plot(self, t, shifts, t_full, shifts_full):
-        from matplotlib import pyplot
-        fig, ax = pyplot.subplots(1, 1)
-        lines = ax.plot(t, shifts, marker='.', linestyle=None)
+        namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndex, drift, t_full, drift_full))
 
-        ax.plot(t_full, shifts_full)
-        
-        ax.set_xlabel("Time (frame)")
-        ax.set_ylabel("Drift (nm)")
-        ax.legend(lines, ['x', 'y', 'z'][:shifts.shape[1]])
-        fig.tight_layout()
-        
-        return fig
 
 class LoadDriftandInterp(ModuleBase):
     """
@@ -244,31 +211,33 @@ class LoadDriftandInterp(ModuleBase):
         namespace[self.output_drift_interpolator] = spl_combined
         
         # non essential, only for plotting out drift data
-        namespace[self.output_drift_plot] = Plot(partial(self.generate_drift_plot, tIndexes, drifts, t_full, drift_full))
+        namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndexes, drifts, t_full, drift_full))
         
-    def generate_drift_plot(self, t, shifts, t_full, shifts_full):
-#        print(len(t))
-#        print(len(shifts))
-#        print(t_full.shape)
-#        print(shifts_full.shape)
-        dims = shifts_full.shape[1]
-        dim_name = ['x', 'y', 'z']
-        from matplotlib import pyplot
-        fig, axes = pyplot.subplots(dims, 1, figsize=(4, 3*dims))
+def generate_drift_plot(t, shifts, t_full=None, shifts_full=None):
+    from matplotlib import pyplot
+
+    if not isinstance(t, list):
+        t = [t]
+        shifts = [shifts]
+    dims = max(s.shape[1] for s in shifts)
+    dim_name = ['x', 'y', 'z']
+    n_row = np.ceil(dims*0.5).astype(int)
+    n_col = min([dims, 2])
+    fig = pyplot.figure(figsize=(n_col*4, n_row*3))
+    
+    for i in range(dims):
+        ax = fig.add_subplot(n_row, n_col, i+1)
+        for j in range(len(t)):
+            ax.plot(t[j], shifts[j][:, i], marker='.', linestyle=None)
         
-        for i, ax in enumerate(axes):
-            for j in range(len(t)):
-                ax.plot(t[j], shifts[j][:, i], marker='.', linestyle=None)
-            ax.plot(t_full, shifts_full[:, i])
-        
-#        lines = ax.plot(t, shifts, marker='.', linestyle=None)
-#
-#        ax.plot(t_full, shifts_full)
-        
-            ax.set_xlabel("Time (frame)")
-            ax.set_ylabel("Drift (nm)")
-            ax.set_title(dim_name[i])
-#        ax.legend(lines, ['x', 'y', 'z'][:shifts.shape[1]])
-        fig.tight_layout()
-        
-        return fig         
+        if (t_full is not None) and (shifts_full is not None):
+            ax.plot(t_full, shifts_full[:, i], label='interpolated')
+    
+        ax.set_xlabel("Time (frame)")
+        ax.set_ylabel("Drift (nm)")
+        ax.set_title(dim_name[i])
+        ax.legend()
+
+    fig.tight_layout()
+    
+    return fig         
