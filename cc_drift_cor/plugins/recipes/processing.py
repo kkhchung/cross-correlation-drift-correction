@@ -1214,7 +1214,8 @@ class ShiftImage(ModuleBase):
             shifted_images[:,:,i] = data_shifted[padding[0,0]:padding[0,0]+ims.data.shape[0],padding[1,0]:padding[1,0]+ims.data.shape[1]]
             
             if ((i+1) % (shifted_images.shape[-1]//5) == 0):
-                shifted_images.flush()
+                if isinstance(shifted_images, np.memmap):
+                    shifted_images.flush()
                 print("{:.2f} s. Completed shifting {} of {} total images.".format(time.time() - self._start_time, i+1, shifted_images.shape[-1]))
             
 #        data_shifted = np.moveaxis(data_shifted, 0, self._images.dims_order[0])
