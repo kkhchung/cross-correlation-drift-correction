@@ -17,6 +17,9 @@ from scipy import ndimage, signal, interpolate
 from functools import partial
 from .io import generate_drift_plot
 
+import multiprocessing
+import time
+
 def calc_fft_from_locs_helper(args):
     """
         Wrapper
@@ -70,7 +73,6 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
     outputName = Output('corrected_localizations')
     
     def calc_corr_drift_from_locs(self, x, y, z, t):
-        import time
 
         # bin edges for histogram
         bx = np.arange(x.min(), x.max() + self.binsize + 1, self.binsize)
@@ -125,10 +127,10 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         dims_length = dims_length[dims_order]
         
         # use memmap for caching if ft_cache is defined
-        if self.ft_cache == "":
+        if self.cache_fft == "":
             ft_images = np.zeros((n_steps, dims_length[0]-1, dims_length[1]-1, (dims_length[2]-1)//2 + 1, ), dtype=np.complex)
         else:
-            ft_images = np.memmap(self.ft_cache, dtype=np.complex, mode='w+', shape=(n_steps, dims_length[0]-1, dims_length[1]-1, (dims_length[2]-1)//2 + 1, ))
+            ft_images = np.memmap(self.cache_fft, dtype=np.complex, mode='w+', shape=(n_steps, dims_length[0]-1, dims_length[1]-1, (dims_length[2]-1)//2 + 1, ))
         
         print(ft_images.shape)
         print("{:,} bytes".format(ft_images.nbytes))
@@ -141,10 +143,10 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         if self.multiprocessing:
             dt = ft_images.dtype
             sh = ft_images.shape
-            args = [(i, xyz[:,slice(*ti)].T, bxyz, (self.ft_cache, dt, sh, i), self.tukey_size) for i, ti in enumerate(time_indexes)]
+            args = [(i, xyz[:,slice(*ti)].T, bxyz, (self.cache_fft, dt, sh, i), self.tukey_size) for i, ti in enumerate(time_indexes)]
 
             for i, (j, res) in enumerate(self._pool.imap_unordered(calc_fft_from_locs_helper, args)):                
-                if self.ft_cache == "":
+                if self.cache_fft == "":
                     ft_images[j] = res
                  
                 if ((i+1) % (n_steps//5) == 0):
@@ -167,34 +169,28 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         shifts, coefs = self.calc_corr_drift_from_ft_images(ft_images)
         
         # clean up of ft_images, potentially really large array
+        if isinstance(ft_images, np.memmap):
+            ft_images.flush()
         del ft_images
-        if not self.ft_cache == "":
-            import os
-            if os.path.isfile(self.ft_cache):
-                os.remove(self.ft_cache)
         
 #        print(shifts)
 #        print(coefs)
         return time_values_mid, self.binsize * shifts[:, dims_order], coefs
 
-    def execute(self, namespace):
-        from PYME.IO import tabular
-        import time
-        import multiprocessing
-
+    def _execute(self, namespace):
 #        from PYME.util import mProfile
         
-        self._start_time = time.time()
+#        self._start_time = time.time()
+        self.trait_setq(**{"_start_time": time.time()})
         print("Starting drift correction module.")
         
         if self.multiprocessing:
-            proccess_count = np.clip(multiprocessing.cpu_count()-1, 1, None)
-            self._pool = multiprocessing.Pool(processes=proccess_count)
+            proccess_count = np.clip(multiprocessing.cpu_count()-1, 1, None)            
+            self.trait_setq(**{"_pool": multiprocessing.Pool(processes=proccess_count)})
         
         locs = namespace[self.input_for_correction]
 
 #        mProfile.profileOn(['localisations.py', 'processing.py'])
-
         drift_res = self.calc_corr_drift_from_locs(locs['x'], locs['y'], locs['z'] * (0 if self.flatten_z else 1), locs['t'])
         t_shift, shifts = self.rcc(self.shift_max,  *drift_res)
         

@@ -25,26 +25,96 @@ import time
 from functools import partial
 from .io import generate_drift_plot
 
+import os
+from os import path
+
+import gc
+import multiprocessing
+
 import logging
 logger=logging.getLogger(__name__)
 
-#class DerivedModule(ModuleBase):
-#    """
-#    In the absent of build-in abstract methods support
-#    """
-#    
-#    def execute(self, namespace):
+class CacheCleanupModule(ModuleBase):
+    """
+    Workaround to handle cache file issues.
+    """
+    
+    _caches = list()
+    
+    def execute(self, namespace, autofix=True):
 #        self.complete_metadata()
-#        self.cleanup_caches()
-#    
-#    def complete_metadata(self):
-#        pass
-#    
-#    def cleanup_caches(self):
-#        pass
+        self.cleanup_caches()
+        self.fix_filepaths(autofix)
+        
+        self._execute(namespace)
+        
+        self.cleanup_caches()
+                        
+    def set_cache(self, cache_name, cache):
+        try:
+            delattr(self, cache_name)
+        except:
+            pass
+        setattr(self, cache_name, cache)
+        self._caches.append(cache_name)
+        
+    def cleanup_caches(self):
+        for cache_name in self._caches:
+            try:
+                delattr(self, cache_name)
+            except:
+                pass
+        gc.collect()
+        
+        for trait_name in self.editable_traits():
+            trait = self.trait(trait_name)
+            if trait_name.startswith("cache_") and trait.is_trait_type(File):
+                trait_value = self.trait_get(trait_name)[trait_name]
+                if path.isfile(trait_value):
+                    try:
+                        os.remove(trait_value)
+                        print("deleted {}".format(trait_value))
+                    except:
+                        pass
+#                        print("falied to remove {}".format(trait_value))
+        
+    def fix_filepaths(self, autofix=True):
+        for trait_name in self.editable_traits():
+            trait = self.trait(trait_name)
+            if trait.is_trait_type(File):
+                trait_value = self.trait_get(trait_name)[trait_name]
+#                print('{} is File: {}'.format(trait_name, trait_value))
+                if trait_value is not "":
+                    try:
+                        with open(trait_value, 'w+'):
+                            pass
+                    except Exception as e:
+                        if autofix:
+                            file_path_base, file_path_ext = path.splitext(trait_value)
+                            i = 0
+                            while True:
+                                file_path = "{}_{:03}{}".format(file_path_base, i, file_path_ext)
+    #                            print file_path
+                                try:
+                                    with open(file_path, 'w+'):
+                                        pass
+                                    os.remove(file_path)
+                                    self.trait_setq(**{trait_name: file_path})
+                                    print("Failed to write to {}. Autofixed to {}".format(trait_value, file_path))
+                                    break
+                                except:
+                                    i += 1
+                                break
+                        else:
+                            raise Exception(e)
+                
+    
+    def complete_metadata(self):
+        pass
+    
 
 #@register_module('Preprocessing')
-class PreprocessingFilter(ModuleBase):
+class PreprocessingFilter(CacheCleanupModule):
     """
         Bypass saving the masks in memory c.f. thresholding & (invert) & multiplication, etc
         Replaces out of range values to defined values.
@@ -57,10 +127,10 @@ class PreprocessingFilter(ModuleBase):
     clip_to_upper = Float(0)
     median_filter_size = Int(3)
     tukey_size = Float(0.25)
-    cache = File("clip_cache.bin")
+    cache_clip = File("clip_cache.bin")
     output_name = Output('clipped_images')
     
-    def execute(self, namespace):
+    def _execute(self, namespace):
         self._start_time = time.time()
         ims = namespace[self.input_name]
         
@@ -75,13 +145,19 @@ class PreprocessingFilter(ModuleBase):
         tukey_mask_y = signal.tukey(ims.data.shape[1], self.tukey_size)
         self._tukey_mask_2d = np.multiply(*np.meshgrid(tukey_mask_x, tukey_mask_y, indexing='ij'))[:,:,None]
 
-        raw_data = np.memmap(self.cache, dtype=dtype, mode='w+', shape=tuple(np.asarray(ims.data.shape[:3], dtype=np.long)))
+        
+        if self.cache_clip == "":
+            raw_data = np.empty(tuple(np.asarray(ims.data.shape[:3], dtype=np.long)), dtype=dtype)
+        else:
+            raw_data = np.memmap(self.cache_clip, dtype=dtype, mode='w+', shape=tuple(np.asarray(ims.data.shape[:3], dtype=np.long)))
+        
         progress = 0.2 * ims.data.shape[2]
         for f in np.arange(0, ims.data.shape[2], chunk_size):
             raw_data[:,:,f:f+chunk_size] = self.applyFilter(ims.data[:,:,f:f+chunk_size])            
             
             if (f+chunk_size >= progress):
-                raw_data.flush()
+                if isinstance(raw_data, np.memmap):
+                    raw_data.flush()
                 progress += 0.2 * ims.data.shape[2]
                 print("{:.2f} s. Completed clipping {} of {} total images.".format(time.time() - self._start_time, min(f+chunk_size, ims.data.shape[2]), ims.data.shape[2]))
         
@@ -112,7 +188,7 @@ class PreprocessingFilter(ModuleBase):
         
         
 #@register_module('Binning')
-class Binning(ModuleBase):
+class Binning(CacheCleanupModule):
     """
         Downsample data (mean) in x, y, t. (Doesn't support z.)
         X, Y pixels does't fill a full bin are dropped.
@@ -128,11 +204,10 @@ class Binning(ModuleBase):
 #    z_start = Int(0)
 #    z_end = Int(-1)
     binsize = List([1,1,1], minlen=3, maxlen=3)
-#    cache_1 = File("binning_cache_1.bin")
-    cache_2 = File("binning_cache_2.bin")
+    cache_bin = File("binning_cache_2.bin")
     outputName = Output('binned_image')
     
-    def execute(self, namespace):
+    def _execute(self, namespace):
         self._start_time = time.time()
         ims = namespace[self.inputName]
         
@@ -160,7 +235,7 @@ class Binning(ModuleBase):
         dtype = ims.data[:,:,0].dtype
         
 #        print bincounts
-        binned_image = np.memmap(self.cache_2, dtype=dtype, mode='w+', shape=tuple(np.asarray(bincounts, dtype=np.long)))
+        binned_image = np.memmap(self.cache_bin, dtype=dtype, mode='w+', shape=tuple(np.asarray(bincounts, dtype=np.long)))
 #        print binned_image.shape
         
         new_shape_one_chunk = new_shape.copy()
@@ -375,7 +450,7 @@ def rbf_nd(rbf_interpolator, dims):
     
 
 #@register_module('RCCDriftCorrectionFromCachedFFT')
-class RCCDriftCorrectionBase(ModuleBase):
+class RCCDriftCorrectionBase(CacheCleanupModule):
     """    
     Performs drift correction using redundant cross-correlation from
     Wang et al. Optics Express 2014 22:13 (Bo Huang's RCC algorithm).
@@ -385,7 +460,7 @@ class RCCDriftCorrectionBase(ModuleBase):
     Currently not registered by itself since not very usefule.
     """
     
-    ft_cache = File("rcc_cache.bin")
+    cache_fft = File("rcc_cache.bin")
     method = Enum(['RCC', 'MCC', 'DCC'])
     # redundant cross-corelation, mean cross-correlation, direction cross-correlation
     shift_max = Float(5)  # nm
@@ -400,7 +475,6 @@ class RCCDriftCorrectionBase(ModuleBase):
     output_cross_cor = Output('cross_cor')
 
     def calc_corr_drift_from_ft_images(self, ft_images):
-        import time
         n_steps = ft_images.shape[0]
         
         # Matrix equation coefficient matrix
@@ -454,7 +528,7 @@ class RCCDriftCorrectionBase(ModuleBase):
                 # if multiprocessing, use cache when defined
                 if self.multiprocessing:
                     # if reading ft_images from cache, replace ft_1 and ft_2 with their indices
-                    if not self.ft_cache == "":
+                    if not self.cache_fft == "":
                         ft_1 = i
                         ft_2 = j
 
@@ -474,7 +548,7 @@ class RCCDriftCorrectionBase(ModuleBase):
                        ft_1_cache,
                        ft_2_cache,
                        autocor_shift_cache,
-                       len(ft_1_cache) * ((self.ft_cache, ft_images.dtype, ft_images.shape),),
+                       len(ft_1_cache) * ((self.cache_fft, ft_images.dtype, ft_images.shape),),
                        cc_args
                        )
             for i, (j, res) in enumerate(self._pool.imap_unordered(calc_shift_helper, args)):
@@ -490,10 +564,10 @@ class RCCDriftCorrectionBase(ModuleBase):
         if not self.debug_cor_file == "":
             # move time axis for ImageStack
             cc_file = np.moveaxis(cc_file, 0, 2)
-            self._cc_image = ImageStack(data=cc_file.copy())
+            self.trait_setq(**{"_cc_image": ImageStack(data=cc_file.copy())})
             del cc_file
         else:
-            self._cc_image = None
+            self.trait_setq(**{"_cc_image": None})
 
         assert (np.all(np.any(coefs, axis=1))), "Coefficient matrix filled less than expected."
 
@@ -512,7 +586,6 @@ class RCCDriftCorrectionBase(ModuleBase):
             Should probably rename function.
             Takes cross correlation results and calculates shifts.
         """
-        import time
         
         print("{:.2f} s. About to start solving shifts array.".format(time.time() - self._start_time))
 
@@ -560,13 +633,9 @@ class RCCDriftCorrectionBase(ModuleBase):
 
         return t_shift, drifts
 
-    def execute(self, namespace):
+    def _execute(self, namespace):
         # dervied versions of RCC need to override this method
-        # 'execute' of this RCC base class is not throughly tested as its use is probably quite limited.
-        
-#        from PYME.IO import tabular
-        import time
-        import multiprocessing
+        # 'execute' of this RCC base class is not throughly tested as its use is probably quite limited.        
 
 #        from PYME.util import mProfile
         
@@ -579,7 +648,7 @@ class RCCDriftCorrectionBase(ModuleBase):
         
 #        mProfile.profileOn(['localisations.py'])
 
-        drift_res = self.calc_corr_drift_from_ft_images(self.ft_cache)
+        drift_res = self.calc_corr_drift_from_ft_images(self.cache_fft)
         t_shift, shifts = self.rcc(self.shift_max,  *drift_res)
 #        mProfile.profileOff()
 #        mProfile.report()
@@ -666,7 +735,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
     """
     
     input_image = Input('input')
-    image_cache = File("rcc_shifted_image.bin")
+#    image_cache = File("rcc_shifted_image.bin")
 #    outputName = Output('drift_corrected_image')
     output_drift = Output('drift')
     
@@ -743,7 +812,6 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
             Feeds fft images to calc_corr_drift_from_ft_images (in base class).
             Returns shifts in pixels (i think).
         """
-        import time
         
         images = self.WrappedImage(ims)        
         
@@ -760,14 +828,14 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         ft_images_shape = tuple([long(i) for i in [images_shape[0], images_shape[1], images_shape[2], images_shape[3]//2 + 1]])
         
         # use memmap for caching if ft_cache is defined
-        if self.ft_cache == "":
+        if self.cache_fft == "":
             ft_images = np.zeros(ft_images_shape, dtype=np.complex)
         else:
             try:
                 del ft_images
             except:
                 pass
-            ft_images = np.memmap(self.ft_cache, dtype=np.complex, mode='w+', shape=ft_images_shape)
+            ft_images = np.memmap(self.cache_fft, dtype=np.complex, mode='w+', shape=ft_images_shape)
             
 #        print(ft_images.shape)
         print("{:,} bytes".format(ft_images.nbytes))
@@ -778,10 +846,10 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
             
             dt = ft_images.dtype
             sh = ft_images.shape
-            args = [(i, images[i,:,:,:], (self.ft_cache, dt, sh, i)) for i in np.arange(images.shape[0])]
+            args = [(i, images[i,:,:,:], (self.cache_fft, dt, sh, i)) for i in np.arange(images.shape[0])]
 
             for i, (j, res) in enumerate(self._pool.imap_unordered(calc_fft_from_image_helper, args)):
-                if self.ft_cache == "":
+                if self.cache_fft == "":
                     ft_images[j] = res
                     
                 if ((i+1) % (images_shape[0]//5) == 0):
@@ -801,22 +869,16 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         
         shifts, coefs = self.calc_corr_drift_from_ft_images(ft_images)
         
-        self._ft_images = ft_images
-        self._images = images
+##        self._ft_images = ft_images
+##        self._images = images
+#        self.set_cache("_ft_images", ft_images)
+#        self.set_cache("_images", images)
         
         return np.arange(images.shape[0]), shifts[:, dims_order], coefs
     
     
-    def execute(self, namespace):
-        try:
-            del self._ft_images
-            del self.image_cache
-        except:
-            pass
+    def _execute(self, namespace):
         
-        import time
-        import multiprocessing
-
 #        from PYME.util import mProfile
         
         self._start_time = time.time()
@@ -843,7 +905,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         # convert frame-to-frame drift to drift from origin
         shifts = np.cumsum(shifts, 0)
         
-        del self._ft_images
+#        del self._ft_images
 #        del self.image_cache
         
         if self.multiprocessing:
@@ -879,11 +941,9 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         
         namespace[self.output_cross_cor] = self._cc_image
         
-        import gc
-        gc.collect()
         
 #@register_module('ShiftImage')
-class ShiftImage(ModuleBase):
+class ShiftImage(CacheCleanupModule):
     """
         Performs FT based image shift.
         Currently only 2D. Shouldn't be too much work for 3D.
@@ -895,17 +955,17 @@ class ShiftImage(ModuleBase):
     padding_multipler = Int(1)
     
 #    ft_cache = File("ft_images.bin")
-    image_cache = File("rcc_shifted_image_1.bin")
+    cache_image = File("shifted_image.bin")
 #    image_cache_2 = File("rcc_shifted_image_2.bin")
     outputName = Output('drift_corrected_image')
     
-    def execute(self, namespace):
+    def _execute(self, namespace):
         self._start_time = time.time()
-        try:
-#            del self._ft_images
-            del self.image_cache
-        except:
-            pass
+#        try:
+##            del self._ft_images
+#            del self.image_cache
+#        except:
+#            pass
         
         ims = namespace[self.input_image]
         
@@ -942,10 +1002,10 @@ class ShiftImage(ModuleBase):
         images_shape = np.asarray(ims.data.shape[:3], dtype=np.long)
         images_shape = tuple(images_shape)
         
-        if self.image_cache == "":
+        if self.cache_image == "":
             shifted_images = np.empty(images_shape)
         else:
-            shifted_images = np.memmap(self.image_cache, dtype=np.float, mode='w+', shape=images_shape)
+            shifted_images = np.memmap(self.cache_image, dtype=np.float, mode='w+', shape=images_shape)
             
 #        print(shifts.shape)
 #        print(kx.shape, ky.shape)

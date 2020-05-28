@@ -20,7 +20,6 @@
 - chung_cc.Locs_RCC:
     binsize: 20.0
     flatten_z: true
-    ft_cache: fft_cache.bin
     input_for_correction: filtered_localizations
     input_for_mapping: filtered_localizations
     multiprocessing: true
