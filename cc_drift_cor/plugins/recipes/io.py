@@ -107,7 +107,6 @@ class InterpolateDrift(ModuleBase):
     degree_of_spline = Int(3) # 1 for linear, 3 for cubic
     smoothing_factor = Float(-1) # 0 for no smoothing. set to negative for UnivariateSpline defulat
     input_drift_raw = Input('drift_raw')
-    output_drift_interpolated= Output('drift_interpolated')
     output_drift_interpolator= Output('drift_interpolator')
     output_drift_plot = Output('drift_plot')
     
@@ -118,25 +117,24 @@ class InterpolateDrift(ModuleBase):
 #        namespace[self.output_drift_raw] = (tIndex, drift)
         tIndex, drift = namespace[self.input_drift_raw]
         
-        if self.smoothing_factor < 0:
-            smoothing_factor = None
-        else:
-            smoothing_factor = self.smoothing_factor
+        spl = interpolate_drift(tIndex, drift, self.degree_of_spline, self.smoothing_factor)
         
-        t_full = np.arange(tIndex.min(), tIndex.max()+1)
-        drift_full = np.empty((t_full.shape[0], drift.shape[1]))
-        spl = list()
-        for i in xrange(drift.shape[1]):
-            spl_1d = interpolate.UnivariateSpline(tIndex, drift[:,i], k=self.degree_of_spline, s=smoothing_factor)
-            drift_full[:, i] = spl_1d(t_full)
-            spl.append(spl_1d)
-            
-        namespace[self.output_drift_interpolated] = (t_full, drift_full)
         namespace[self.output_drift_interpolator] = spl
         
 #        # non essential, only for plotting out drift data
-        namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndex, drift, t_full, drift_full))
+        namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndex, drift, spl))
         namespace[self.output_drift_plot].plot()
+        
+def interpolate_drift(tIndex, drift, degree_of_spline, smoothing_factor):
+    if smoothing_factor < 0:
+        smoothing_factor = None
+                
+    spl = list()
+    for i in range(drift.shape[1]):
+        spl_1d = interpolate.UnivariateSpline(tIndex, drift[:,i], k=degree_of_spline, s=smoothing_factor)
+        spl.append(spl_1d)
+    
+    return spl
 
 
 class LoadDriftandInterp(ModuleBase):
@@ -151,7 +149,6 @@ class LoadDriftandInterp(ModuleBase):
     degree_of_spline = Int(3) # 1 for linear, 3 for cubic
     smoothing_factor = Float(-1) # 0 for no smoothing. set to negative for UnivariateSpline defulat
 #    input_drift_raw = Input('drift_raw')
-#    output_drift_interpolated= Output('drift_interpolated')
     output_drift_interpolator= Output('drift_interpolator')
     output_drift_plot = Output('drift_plot')
     output_drift_raw= Input('drift_raw')
@@ -171,20 +168,8 @@ class LoadDriftandInterp(ModuleBase):
             
             tIndexes.append(tIndex)
             drifts.append(drift)
-        
-#        namespace[self.output_drift_raw] = (tIndex, drift)
-        
-#        tIndex, drift = namespace[self.input_drift_raw]
-        
-            if self.smoothing_factor < 0:
-                smoothing_factor = None
-            else:
-                smoothing_factor = self.smoothing_factor
                 
-            spl = list()
-            for i in xrange(drift.shape[1]):
-                spl_1d = interpolate.UnivariateSpline(tIndex, drift[:,i], k=self.degree_of_spline, s=smoothing_factor)
-                spl.append(spl_1d)
+            spl = interpolate_drift(tIndex, drift, self.degree_of_spline, self.smoothing_factor)
             spl_array.append(spl)
 
 #        print(len(spl_array))
@@ -201,28 +186,27 @@ class LoadDriftandInterp(ModuleBase):
 #            spl_combined.append(lambda x: np.sum([f(x) for f in spl], axis=0))
             spl_combined.append(partial(spl_method, spl))
         
-#        t_full = np.arange(t_min, t_max)
-        t_full = np.linspace(t_min, t_max, 1000)
-        drift_full = np.empty((t_full.shape[0], drift.shape[1]))
-        for i, spl in enumerate(spl_combined):
-#            print spl
-            drift_full[:, i] = spl(t_full)
-            
-#        namespace[self.output_drift_interpolated] = (t_full, drift_full)
         namespace[self.output_drift_interpolator] = spl_combined
         
         # non essential, only for plotting out drift data
-        namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndexes, drifts, t_full, drift_full))
+        namespace[self.output_drift_plot] = Plot(partial(generate_drift_plot, tIndexes, drifts, spl_combined))
         namespace[self.output_drift_plot].plot()
         
-def generate_drift_plot(t, shifts, t_full=None, shifts_full=None):
+
+def generate_drift_plot(t, shifts, interpolators=None):
     from matplotlib import pyplot
 
     if not isinstance(t, list):
         t = [t]
         shifts = [shifts]
     dims = max(s.shape[1] for s in shifts)
-    dim_name = ['x', 'y', 'z']
+    dim_name = ['x', 'y', 'z']    
+    
+    t_min = np.asarray(t).min()
+    t_max = np.asarray(t).max()
+    step_size = max([(t_max - t_min + 1) // 100, 1])
+    t_full = np.arange(t_min, t_max+1, step_size)
+    
     n_row = np.ceil(dims*0.5).astype(int)
     n_col = min([dims, 2])
     fig = pyplot.figure(figsize=(n_col*4, n_row*3))
@@ -232,8 +216,8 @@ def generate_drift_plot(t, shifts, t_full=None, shifts_full=None):
         for j in range(len(t)):
             ax.plot(t[j], shifts[j][:, i], marker='.', linestyle=None)
         
-        if (t_full is not None) and (shifts_full is not None):
-            ax.plot(t_full, shifts_full[:, i], label='interpolated')
+        if not interpolators is None:
+            ax.plot(t_full, interpolators[i](t_full))
     
         ax.set_xlabel("Time (frame)")
         ax.set_ylabel("Drift (nm)")
