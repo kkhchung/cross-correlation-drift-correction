@@ -55,12 +55,59 @@ from .processing import RCCDriftCorrectionBase
 #@register_module('RCCDriftCorrection')
 class RCCDriftCorrection(RCCDriftCorrectionBase):
     """
+    For localization data.
+    
     Performs drift correction using cross-correlation, including redundant RCC from
     Wang et al. Optics Express 2014 22:13 (Bo Huang's RCC algorithm).
-    Derived class for the localisation based verison of RCC.
     
-    ** The built-in 'apply shift' has a cubic interpolate interpolator with no smoothing.**
+    Runtime will vary hugely depending on size of dataset and settings.
+    
+    ``cache_fft`` is necessary for large datasets.
+        
+    Inputs
+    ------
+    input_for_correction : Tabular
+        Dataset used to calculate drift.
+    input_for_mapping : Tabular
+        *Deprecated.*   Dataset to correct.
+    
+    Outputs
+    -------
+    output_drift : Tuple of arrays
+        Drift results.
+    output_drift_plot : Plot
+        *Deprecated.*   Plot of drift results.
+    output_cross_cor : ImageStack
+        Cross correlation images if ``debug_cor_file`` is not blank.
+    outputName : Tabular
+        *Deprecated.*   Drift-corrected dataset.
+    
+    Parameters
+    ----------
+    step : Int
+        Setting for image construction. Step size between images
+    window : Int
+        Setting for image construction. Number of frames used per image. Should be equal or larger than step size.
+    binsize : Float
+        Setting for image construction. Pixel size.
+    flatten_z : Bool
+        Setting for image construction. Ignore z information if enabled.
+    tukey_size : Float
+        Setting for image construction. Shape parameter for Tukey filter (``scipy.signal.tukey``).
+    cache_fft : File
+        Use file as disk cache if provided.
+    method : String
+        Redundant, mean, or direct cross-correlation.
+    shift_max : Float
+        Rejection threshold for RCC.
+    corr_window : Float
+        Size of correlation window. Frames are only compared if within this frame range. N/A for DCC.
+    multiprocessing : Float
+        Enables multiprocessing.
+    debug_cor_file : File
+        Enables debugging. Use file as disk cache if provided.
     """
+    
     input_for_correction = Input('Localizations')
     input_for_mapping = Input('Localizations')
     # redundant cross-corelation, mean cross-correlation, direction cross-correlation
@@ -250,8 +297,21 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
 #@register_module('ApplyDrift')
 class ApplyDrift(ModuleBase):
     """
-        Takes interpolator object and applies mapping to localisation data.
+    Correct localization data using values from the drift interpolator.
+        
+    Inputs
+    ------
+    input_localizations : Tabular
+        Dataset to correct.
+    input_drift_interpolator : 
+        Returns drift when called with frame number / time.
+    
+    Outputs
+    -------
+    output_name : Tabular
+        Drift-corrected dataset.
     """
+    
     input_localizations = Input('Localizations')
 #    input_drift = Input('drift')
     input_drift_interpolator = Input('drift_interpolator')

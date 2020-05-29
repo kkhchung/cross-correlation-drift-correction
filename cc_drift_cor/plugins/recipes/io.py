@@ -54,9 +54,22 @@ logger=logging.getLogger(__name__)
 #@register_module('SaveDrift')
 class DriftOutput(ModuleBase):
     """
-    Save drift as numpy array file. Expects tuple of 2 arrays, one for frame number (N) and one for drift (Nx3).
-    No error checks. Writes to file with key 'tIndex' and 'drift'
-    Not derived from OutputModule. Will save on execution.
+    Save drift data to a file.
+        
+    Inputs
+    ------
+    input_name : 
+        Drift measured from localization or image dataset.
+    
+    Outputs
+    -------
+    output_dummy : None
+        Blank output. Required to run correctly.
+        
+    Parameters
+    ----------
+    save_path : File
+        Filepath to save drift data.    
     """
     
     input_name= Input('drift')
@@ -75,11 +88,11 @@ class DriftOutput(ModuleBase):
 #@register_module('LoadDrift')
 class LoadDrift(ModuleBase):
     """
-        Load drift from numpy array file. Expects numpy object containing 2 arrays, one for frame number ('tIndex', of size N) and one for drift ( 'drift' of size Nx3).
-        No error checks.
-        Interpolation with scipy.interpolate.UnivariateSpline.
-        Returns a tuple: (tIndex, drift)
+    *Deprecated.*   Use ``LoadDriftandInterp`` instead.
+    
+    Load drift from a file.
     """
+    
     input_dummy = Input('input') # breaks GUI without this???
     load_path = File()
     output_drift_raw= Input('drift_raw')
@@ -98,9 +111,27 @@ class LoadDrift(ModuleBase):
 #@register_module('InterpolateDrift')
 class InterpolateDrift(ModuleBase):
     """
-        Return interpolator objects (1 per dim) created from 'raw' drift data.
-        No error checking for extrapolation.
-    """    
+    Creates a spline interpolator from drift data. (``scipy.interpolate.UnivariateSpline``)
+        
+    Inputs
+    ------
+    input_drift_raw : Tuple of arrays
+        Drift measured from localization or image dataset.
+    
+    Outputs
+    -------
+    output_drift_interpolator :
+        Drift interpolator. Returns drift when called with frame number / time.
+    output_drift_plot : Plot
+        Plot of the original and interpolated drift.
+        
+    Parameters
+    ----------
+    degree_of_spline : int
+        Degree of the smoothing spline.
+    smoothing_factor : float
+        Smoothing factor.
+    """
     
 #    input_dummy = Input('input') # breaks GUI without this???
 #    load_path = File()
@@ -139,9 +170,29 @@ def interpolate_drift(tIndex, drift, degree_of_spline, smoothing_factor):
 
 class LoadDriftandInterp(ModuleBase):
     """
-        Return interpolator objects (1 per dim) created from 'raw' drift data.
-        No error checking for extrapolation.
-    """    
+    Loads drift data from file(s) and use them to create a spline interpolator (``scipy.interpolate.UnivariateSpline``).
+        
+    Inputs
+    ------
+    input_dummy : None
+       Blank input. Required to run correctly.
+    
+    Outputs
+    -------
+    output_drift_interpolator :
+        Drift interpolator. Returns drift when called with frame number / time.
+    output_drift_plot : Plot
+        Plot of the original and interpolated drift.
+        
+    Parameters
+    ----------
+    load_paths : list of File
+        List of files to load.
+    degree_of_spline : int
+        Degree of the smoothing spline.
+    smoothing_factor : float
+        Smoothing factor.
+    """
     
     input_dummy = Input('input') # breaks GUI without this???
 #    load_path = File()
@@ -151,7 +202,7 @@ class LoadDriftandInterp(ModuleBase):
 #    input_drift_raw = Input('drift_raw')
     output_drift_interpolator= Output('drift_interpolator')
     output_drift_plot = Output('drift_plot')
-    output_drift_raw= Input('drift_raw')
+#    output_drift_raw= Input('drift_raw')
     
     def execute(self, namespace):
         spl_array = list()

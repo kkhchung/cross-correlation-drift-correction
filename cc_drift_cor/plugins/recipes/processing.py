@@ -116,9 +116,38 @@ class CacheCleanupModule(ModuleBase):
 #@register_module('Preprocessing')
 class PreprocessingFilter(CacheCleanupModule):
     """
-        Bypass saving the masks in memory c.f. thresholding & (invert) & multiplication, etc
-        Replaces out of range values to defined values.
-        Applies Tukey filter to dampen potential edge artifacts.
+    Optional. Combines a few image processing operations. Only 3D.
+    
+    1. Applies median filter for denoising.
+    
+    2. Replaces out of range values to defined values.
+    
+    3. Applies 2D Tukey filter to dampen potential edge artifacts.
+        
+    Inputs
+    ------
+    input_name : ImageStack
+    
+    Outputs
+    -------
+    output_name : ImageStack
+    
+    Parameters
+    ----------
+    median_filter_size : int
+        Median filter size (``scipy.ndimage.median_filter``).
+    threshold_lower : Float
+        Pixels at this value or lower are replaced.
+    clip_to_lower : Float
+        Pixels below the lower threshold are replaced by this value.
+    threshold_upper : Float
+        Pixels at this value or higher are replaced.
+    clip_to_upper : Float
+        Pixels above the upper threshold are replaced by this value.
+    tukey_size : float
+        Shape parameter for Tukey filter (``scipy.signal.tukey``).
+    cache_clip : File
+        Use file as disk cache if provided.
     """
     input_name = Input('input')
     threshold_lower = Float(0)
@@ -190,10 +219,32 @@ class PreprocessingFilter(CacheCleanupModule):
 #@register_module('Binning')
 class Binning(CacheCleanupModule):
     """
-        Downsample data (mean) in x, y, t. (Doesn't support z.)
-        X, Y pixels does't fill a full bin are dropped.
-        Z pixels can have a partially filled bin
-        Via numpy reshape function.
+    Downsample 3D data (mean).
+    X, Y pixels that does't fill a full bin are dropped.
+    Pixels in the 3rd dimension can have a partially filled bin.
+        
+    Inputs
+    ------
+    inputName : ImageStack
+    
+    Outputs
+    -------
+    outputName : ImageStack
+    
+    Parameters
+    ----------
+    x_start : int
+        Starting index in x.
+    x_end : Float
+        Stopping index in x.
+    y_start : Float
+        Starting index in y.
+    y_end : Float
+        Stopping index in y.
+    binsize : Float
+        Bin size.
+    cache_bin : File
+        Use file as disk cache if provided.
     """
     
     inputName = Input('input')
@@ -462,7 +513,7 @@ class RCCDriftCorrectionBase(CacheCleanupModule):
     
     cache_fft = File("rcc_cache.bin")
     method = Enum(['RCC', 'MCC', 'DCC'])
-    # redundant cross-corelation, mean cross-correlation, direction cross-correlation
+    # redundant cross-corelation, mean cross-correlation, direct cross-correlation
     shift_max = Float(5)  # nm
     corr_window = Int(5)
     multiprocessing = Bool()
@@ -728,16 +779,48 @@ def shift_image_direct(source_ft, shifts, kxyz=None):
 #@register_module('RCCDriftCorrection')
 class RCCDriftCorrection(RCCDriftCorrectionBase):
     """
+    For image data. No preprocessing.
+    
     Performs drift correction using cross-correlation, includes redundant CC from
     Wang et al. Optics Express 2014 22:13 (Bo Huang's RCC algorithm).
-    Derived class for the image based verison of RCC.    
-    Images are not padded prior to FT. Use the preprocessing modules
+    
+    Runtime will vary hugely depending on image size and settings for cross-correlation.
+    
+    ``cache_fft`` is necessary for large images.
+        
+    Inputs
+    ------
+    input_image : ImageStack
+    
+    Outputs
+    -------
+    output_drift : Tuple of arrays
+        Drift results.
+    output_drift_plot : Plot
+        *Deprecated.*   Plot of drift results.
+    output_cross_cor : ImageStack
+        Cross correlation images if ``debug_cor_file`` is not blank.
+    
+    Parameters
+    ----------
+    cache_fft : File
+        Use file as disk cache if provided.
+    method : String
+        Redundant, mean, or direct cross-correlation.
+    shift_max : Float
+        Rejection threshold for RCC.
+    corr_window : Float
+        Size of correlation window. Frames are only compared if within this frame range. N/A for DCC.
+    multiprocessing : Float
+        Enables multiprocessing.
+    debug_cor_file : File
+        Enables debugging. Use file as disk cache if provided.
     """
     
     input_image = Input('input')
 #    image_cache = File("rcc_shifted_image.bin")
 #    outputName = Output('drift_corrected_image')
-    output_drift = Output('drift')
+#    output_drift = Output('drift')
     
     class WrappedImage(object):
         """
@@ -945,8 +1028,25 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
 #@register_module('ShiftImage')
 class ShiftImage(CacheCleanupModule):
     """
-        Performs FT based image shift.
-        Currently only 2D. Shouldn't be too much work for 3D.
+    Performs FT based image shift. Only shift in 2D.    
+        
+    Inputs
+    ------
+    input_image : ImageStack
+        Images with drift.
+    input_drift_interpolator : 
+        Returns drift when called with frame number / time.
+    
+    Outputs
+    -------
+    outputName : ImageStack
+    
+    Parameters
+    ----------
+    padding_multipler : Int
+        Padding (as multiple of image size) added to the image before shifting to avoid artifacts.
+    cache_image : File
+        Use file as disk cache if provided.
     """
     
     input_image = Input('input')

@@ -7,7 +7,6 @@
     output_drift_plot: dump_drift_plot
 - chung_cc.Drift_Interpolate:
     input_drift_raw: drift_raw
-    output_drift_interpolated: drift_interpolated
     output_drift_interpolator: drift_interpolator
     output_drift_plot: drift_plot
 - chung_cc.Image_Post_Shift:
