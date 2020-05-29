@@ -1,62 +1,117 @@
 # cross-correlation-drift-correction
-PYME package for cross correlation-based drift correction.
+Cross correlation-based drift correction recipe module written for [PYME](https://python-microscopy.org/).
 
-To install, run this from the project folder:
-
-```
-python setup.py develop
-```
-
-Supports:
-- Self correction of localization data
-- Self correction of image dataset
-- Correction of localization data with raw images
+Supports 2/3D localization or 2D image data.
 
 
-Cross correlation-based methods require the same object to be visible throughout a number of frames. Sparse labelling without fiducials is unlikely to ever work well.
+## System requirements
+* Windows, Linux or OS X
+* Python 2.7
+* PYME (>18.7.18) and dependencies
 
-This was designed with large datasets in mind and on a single computer so intermediate results are cached to files on the harddisk. Unlikely to work on the cluster as is.
+- Tested on Windows 10 with PYME (18.7.18)
 
-There are also various hacks that deviate from PYME intended design, e.g. dummy inputs/outputs so that the module will execute in dh5view / visgui.
 
-Another issue in visgui is that this runs slow enough that you would not want to run it every time the recipe pipeline is updated. To turn off auto-execute for all recipe modules, enter in the shell:
-```
-pipeline.recipe.trait_set(execute_on_invalidation=False)
-```
-After building the recipe, enter the following to execute it once:
-```
-pipeline.recipe.execute()
-```
-## Recipe modules
-Currently this package only adds recipe modules. There are no pre-built recipes, nothing is added to the menus.
+## Installation
 
-For now, modules are named so they all appear in the node `chung_cc`.
+1. Clone repository.
+2. Run the following in the project folder. 
+	```
+		python setup.py develop
+	```
+3. Start `dh5view` or `VisGUI` (PYME).
 
-### To calculate drift:
-1. from images
-	1. `Image_Pre_Clip&Filter`: Image preprocessing, clip data by intensity and applies Tukey filter to dim edges.
-	1. `Image_Pre_Downsample`: Simple down sampling, sums pixels together.
-	1. `Image_RCC`: Takes images and calculate drift.
+(Runtime < 5 min)
 
-1.  from localisation data
-	1.  `Locs_RCC`: Generate images from localisation data and calculates drift.
 
-1.  and save to file
-	1.  `Drift_Save`: Saves drift data to numpy file.
+## Demo
 
-### To apply drift correction:
-1.  from file
-	1.  `Drift_Load`: Load drift data from file.
-	1.  `Drift_Interpolate`: Create interpolator from drift data
+### To correct drift in localization data and save the measured drift:
+1. Open this simulated dataset ([wormlike_simulated_locs_with_drift.hdf](/cc_drift_cor/example/wormlike_simulated_locs_with_drift.hdf)) with `VisGUI` (PYME).
+2. Load and run this demo recipe ([correct_drift_locs.yaml](/cc_drift_cor/example/correct_drift_locs.yaml)).
+3. The measured drift will display in a new window.
+4. Select the new output (`corrected_localizations`) in the Data Pipeline pane to see the drift-corrected data.
+5. The drift data will be saved as `drift.npz`
 
-1.  for images
-	1.  `Image_Post_Shift`: Performs FT based subpixel shift of images.
+(Runtime < 5 min)
 
-1.  For localisation data
-	1.  `Locs_Post_Shift`: Add mapping filter to pipeline for correction.
+### To correct drift in localization data from previously saved drift data:
+1. Open this simulated dataset ([wormlike_simulated_locs_with_drift.hdf](/cc_drift_cor/example/wormlike_simulated_locs_with_drift.hdf)) with `VisGUI` (PYME).
+2. Load and run this demo recipe ([correct_drift_locs_load.yaml](/cc_drift_cor/example/correct_drift_locs_load.yaml)).
+3. The drift data will be loaded from [drift.npz](/cc_drift_cor/example/drift.npz)
+4. The loaded drift will display in a new window.
+5. Select the new output (`corrected_localizations`) in the Data Pipeline pane to see the drift-corrected data.
 
-## To-do list
-* Add metadata for the parameters used
+(Runtime < 5 min)
+
+### To correct drift in image data:
+1. Open this simulated image ([wormlike_simulated_images_with_drift.h5](/cc_drift_cor/example/wormlike_simulated_images_with_drift.h5)) with `dh5view` (PYME).
+2. Load and run this demo recipe ([correct_drift_images.yaml](/cc_drift_cor/example/correct_drift_images.yaml)).
+3. The measured drift will display in a new window.
+4. Open the drift-corrected images by clicking the output (`drift_corrected_image`) on the final **Image_Post_Shift** module.
+
+(Runtime < 5 min)
+
+
+## Instructions
+
+### For localization data:
+1. Refer to [PYME documentation](https://python-microscopy.org/doc/index.html) for general use of PYME.
+2. Detailed description of each module and their inputs, outputs and parameters are accessible in PYME.
+3. Open localization file with `VisGUI` (PYME).
+4. To correct drift, chain the modules in this order:
+	1. **Locs_RCC**
+	2. **Drift_Interpolate**
+	3. **Locs_Post_Shift**
+	
+5. Alternatively, to save/load drift:
+	To save:
+	1. **Locs_RCC**
+	2. **Drift_Save**
+	
+	To load:
+	1. **Drift_Load_Interpolate**
+	2. **Locs_Post_Shift**
+6. Recipes in `VisGUI' auto-run when modules are added. Since drift correction can be slow, it may be desirable to suspend this behaviour by entering this in the Shell tab.
+	```
+	pipeline.recipe.trait_set(execute_on_invalidation=False)
+	```
+	Then after building the complete recipe, enter the following to execute it once:
+	```
+	pipeline.recipe.execute()
+	```
+	This behavior may have changed in more recent PYME versions.
+	
+### For image data:
+1. Refer to [PYME documentation](https://python-microscopy.org/doc/index.html) for general use of PYME.
+2. Detailed description of each module and their inputs, outputs and parameters are accessible in PYME.
+3. Open image file with `dh5view` (PYME).
+4. *(Optional)* Standard image processing methods to clean up the images may be required depending on their quality.
+	1. **Image_Pre_Clip&Filter**
+	2. **Image_Pre_Downsample**
+5. To correct drift, chain the modules in this order:
+	1. **Image_RCC**
+	2. **Drift_Interpolate**
+	3. **Image_Post_Shift**
+6. Alternatively, to save/load drift:
+	To save:
+	1. **Image_RCC**
+	2. **Drift_Save**
+	
+	To load:
+	1. **Drift_Load_Interpolate**
+	2. **Image_Post_Shift**
+
+
+## Notes
+
+* Cross correlation-based methods require the same object to be visible throughout a number of frames. Sparse labelling without fiducials is unlikely to ever work well.
+
+* This was designed with large datasets in mind and on a single computer so intermediate results are cached to files on the hard disk. Cached files may need to be removed manually for some of the modules or when errors occur.
+
+* Runtime can vary hugely depending on the size of the dataset, 2D/3D, pixel size, cross-correlation window size, etc. It is probably worth adjusting the settings if runtime is over 30 mins. Longer runtime may not coincide with better drift correction.
+
+
+## To do's
+* Add more metadata
 * Support for 4D (time and z) image data
-* Remove the apply shift part of `Locs_RCC`
-* Add more documentation
