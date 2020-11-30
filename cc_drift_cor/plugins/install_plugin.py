@@ -3,7 +3,7 @@ import os
 import sys
 from distutils.dir_util import copy_tree
 import pkgutil
-import recipes
+from . import recipes
 
 def main():
 #    this_dir = os.path.dirname(__file__)

@@ -18,7 +18,7 @@
     inputName: colour_mapped
     outputName: filtered_localizations
 - chung_cc.Drift_Load_Interpolate:
-    input_dummy: input
+    input_dummy: Localizations
     load_paths:
     - drift.npz
     output_drift_interpolator: drift_interpolator
