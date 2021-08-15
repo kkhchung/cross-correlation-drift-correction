@@ -18,7 +18,7 @@ from PYME.recipes.graphing import Plot
 import numpy as np
 from scipy import ndimage, optimize, signal, interpolate
 from PYME.IO.image import ImageStack
-from PYME.IO.dataWrap import ListWrap
+#from PYME.IO.dataWrap import ListWrap
 
 import time
 
