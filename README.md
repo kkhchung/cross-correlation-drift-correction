@@ -6,7 +6,7 @@ Supports 2/3D localization or 2D image data.
 
 ## System requirements
 * Windows, Linux or OS X
-* Python 2.7
+* Python 2.7, 3.6, or 3.7
 * PYME (>18.7.18) and dependencies
 
 - Tested on Windows 10 with PYME (18.7.18)
