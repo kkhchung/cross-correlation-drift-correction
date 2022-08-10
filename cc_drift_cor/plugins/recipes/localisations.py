@@ -196,7 +196,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
                 if self.cache_fft == "":
                     ft_images[j] = res
                  
-                if ((i+1) % (n_steps//5) == 0):
+                if ((i+1) % max(n_steps//5, 1) == 0):
                     print("{:.2f} s. Completed calculating {} of {} total ft images.".format(time.time() - self._start_time, i+1, n_steps))
 
         else:
@@ -207,7 +207,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
                 t_slice = slice(*ti)
                 ft_images[i] = calc_fft_from_locs(xyz[:,t_slice].T, bxyz, filter_size=self.tukey_size)
                 
-                if ((i+1) % (n_steps//5) == 0):
+                if ((i+1) % max(n_steps//5, 1) == 0):
                     print("{:.2f} s. Completed calculating {} of {} total ft images.".format(time.time() - self._start_time, i+1, n_steps))
         
         print("{:.2f} s. Finished generating ft array.".format(time.time() - self._start_time))

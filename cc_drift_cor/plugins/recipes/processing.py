@@ -18,7 +18,7 @@ from PYME.recipes.graphing import Plot
 import numpy as np
 from scipy import ndimage, optimize, signal, interpolate
 from PYME.IO.image import ImageStack
-from PYME.IO.dataWrap import ListWrap
+#from PYME.IO.dataWrap import ListWrap
 
 import time
 
@@ -168,6 +168,7 @@ class PreprocessingFilter(CacheCleanupModule):
         # Somewhat arbitrary way to decide on chunk size 
         chunk_size = 100000000 / ims.data.shape[0] / ims.data.shape[1] / dtype.itemsize
         chunk_size = max(1, chunk_size)
+        chunk_size = int(chunk_size)
 #        print chunk_size
         
         tukey_mask_x = signal.tukey(ims.data.shape[0], self.tukey_size)
@@ -372,7 +373,7 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
     # i.e. drift not allow to span 1/4 the image width
     cropping = [slice(dim*6//16, -dim*6//16) if dim >= 16 else slice(None, None) for dim in cross_corr.shape]
     cross_corr_mask = np.zeros(cross_corr.shape)
-    cross_corr_mask[cropping] = True
+    cross_corr_mask[tuple(cropping)] = True
     
 #    threshold = np.percentile(cross_corr[cropping], 95)
     
@@ -449,7 +450,7 @@ def calc_shift_direct(ft_1, ft_2, origin=0, debug_cross_cor=None):
     res = optimize.minimize(rbf_nd_error, p0, args=rbf_interpolator)
     
     offset = list()
-    for i in np.arange(len(cross_corr_thresholded.shape)):
+    for i in range(len(cross_corr_thresholded.shape)):
 #        offset.append(res.x[2*i+2])
         offset.append(res.x[i])
     offset += bounds[:, 0]
@@ -533,10 +534,9 @@ class RCCDriftCorrectionBase(CacheCleanupModule):
         if self.method == "DCC":
             coefs_size = n_steps - 1
         elif self.corr_window > 0:
-            coefs_size = n_steps * self.corr_window - self.corr_window * (self.corr_window + 1) / 2
+            coefs_size = n_steps * self.corr_window - self.corr_window * (self.corr_window + 1) // 2
         else:
-            coefs_size = n_steps * (n_steps-1) / 2
-        coefs_size = int(coefs_size)
+            coefs_size = n_steps * (n_steps-1) // 2
         coefs = np.zeros((coefs_size, n_steps-1))
         shifts = np.zeros((coefs_size, 3))
 
@@ -590,7 +590,7 @@ class RCCDriftCorrectionBase(CacheCleanupModule):
                 else:
                     shifts[counter, :] = calc_shift(ft_1, ft_2, autocor_shift, None, cc_args[counter])
                     
-                    if ((counter+1) % (coefs_size//5) == 0):
+                    if ((counter+1) % max(coefs_size//5, 1) == 0):
                         print("{:.2f} s. Completed calculating {} of {} total shifts.".format(time.time() - self._start_time, counter+1, coefs_size))
                 
                 counter += 1
@@ -606,7 +606,7 @@ class RCCDriftCorrectionBase(CacheCleanupModule):
             for i, (j, res) in enumerate(self._pool.imap_unordered(calc_shift_helper, args)):
                 shifts[j,] = res
                 
-                if ((i+1) % (coefs_size//5) == 0):
+                if ((i+1) % max(coefs_size//5, 1) == 0):
                     print("{:.2f} s. Completed calculating {} of {} total shifts.".format(time.time() - self._start_time, i+1, coefs_size))
                 
         print("{:.2f} s. Finished calculating all shifts.".format(time.time() - self._start_time))
@@ -857,7 +857,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
             else:
                 assert True, "This shouldn't happen. IF statements falling through."
                 
-            xyz_dims = range(0, 4)
+            xyz_dims = list(range(0, 4))
             xyz_dims.remove(cross_cor_dim)
             self.dims_order = [cross_cor_dim,] + xyz_dims
             
@@ -909,7 +909,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
         images_shape = images.shape
 #        print(images_shape)
         
-        ft_images_shape = tuple([long(i) for i in [images_shape[0], images_shape[1], images_shape[2], images_shape[3]//2 + 1]])
+        ft_images_shape = tuple([int(i) for i in [images_shape[0], images_shape[1], images_shape[2], images_shape[3]//2 + 1]])
         
         # use memmap for caching if ft_cache is defined
         if self.cache_fft == "":
@@ -936,7 +936,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
                 if self.cache_fft == "":
                     ft_images[j] = res
                     
-                if ((i+1) % (images_shape[0]//5) == 0):
+                if ((i+1) % max(images_shape[0]//5, 1) == 0):
                     print("{:.2f} s. Completed calculating {} of {} total ft images.".format(time.time() - self._start_time, i+1, images_shape[0]))
         else:
             
@@ -945,7 +945,7 @@ class RCCDriftCorrection(RCCDriftCorrectionBase):
                 # .. we store ft of image                
                 ft_images[i] = calc_fft_from_image(images[i,:,:,:])
                 
-                if ((i+1) % (images_shape[0]//5) == 0):
+                if ((i+1) % max(images_shape[0]//5, 1) == 0):
                     print("{:.2f} s. Completed calculating {} of {} total ft images.".format(time.time() - self._start_time, i+1, images_shape[0]))
         
         print("{:.2f} s. Finished generating ft array.".format(time.time() - self._start_time))
@@ -1142,7 +1142,7 @@ class ShiftImage(CacheCleanupModule):
             
             shifted_images[:,:,i] = data_shifted[padding[0,0]:padding[0,0]+ims.data.shape[0],padding[1,0]:padding[1,0]+ims.data.shape[1]]
             
-            if ((i+1) % (shifted_images.shape[-1]//5) == 0):
+            if ((i+1) % max(shifted_images.shape[-1]//5, 1) == 0):
                 if isinstance(shifted_images, np.memmap):
                     shifted_images.flush()
                 print("{:.2f} s. Completed shifting {} of {} total images.".format(time.time() - self._start_time, i+1, shifted_images.shape[-1]))            
